@@ -1,5 +1,5 @@
 use crate::highlighting;
-use crate::HighlightingOptions;
+use crate::highlighting::HighlightingOptions;
 use crate::SearchDirection;
 use std::cmp;
 use termion::color;
@@ -25,7 +25,7 @@ impl From<&str> for Row {
 }
 
 impl Row {
-    pub fn render(&self, start: usize, end: usize) -> String {
+    pub(crate) fn render(&self, start: usize, end: usize) -> String {
         let end = cmp::min(end, self.string.len());
         let start = cmp::min(start, end);
         let mut result = String::new();
@@ -46,25 +46,24 @@ impl Row {
                     current_highlighting = highlighting_type;
                     let start_highlight =
                         format!("{}", termion::color::Fg(highlighting_type.to_color()));
-                    result.push_str(&start_highlight[..]);
+                    result.push_str(&start_highlight);
                 }
                 if c == '\t' {
-                    result.push_str(" ");
+                    result.push(' ');
                 } else {
                     result.push(c);
                 }
             }
         }
         let end_highlight = format!("{}", termion::color::Fg(color::Reset));
-        result.push_str(&end_highlight[..]);
+        result.push_str(&end_highlight);
         result
     }
-    pub fn len(&self) -> usize {
+
+    pub(crate) fn len(&self) -> usize {
         self.len
     }
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
+
     pub fn insert(&mut self, at: usize, c: char) {
         if at >= self.len() {
             self.string.push(c);
@@ -128,10 +127,8 @@ impl Row {
             highlighting: Vec::new(),
         }
     }
-    pub fn as_bytes(&self) -> &[u8] {
-        self.string.as_bytes()
-    }
-    pub fn find(&self, query: &str, at: usize, direction: SearchDirection) -> Option<usize> {
+
+    pub(crate) fn find(&self, query: &str, at: usize, direction: SearchDirection) -> Option<usize> {
         if at > self.len || query.is_empty() {
             return None;
         }
@@ -238,7 +235,7 @@ impl Row {
                 }
             }
 
-            if self.highlight_str(index, &word, chars, hl_type) {
+            if self.highlight_str(index, word, chars, hl_type) {
                 return true;
             }
         }
@@ -404,11 +401,7 @@ impl Row {
         false
     }
     #[allow(clippy::indexing_slicing, clippy::integer_arithmetic)]
-    pub fn highlight(
-        &mut self,
-        word: &Option<String>,
-        start_with_comment: bool,
-    ) -> bool {
+    pub fn highlight(&mut self, word: &Option<String>, start_with_comment: bool) -> bool {
         let opts = &HighlightingOptions::default();
         let chars: Vec<char> = self.string.chars().collect();
         if self.is_highlighted && word.is_none() {
@@ -437,15 +430,15 @@ impl Row {
             index = closing_index;
         }
         while let Some(c) = chars.get(index) {
-            if self.highlight_multiline_comment(&mut index, &opts, *c, &chars) {
+            if self.highlight_multiline_comment(&mut index, opts, *c, &chars) {
                 in_ml_comment = true;
                 continue;
             }
             in_ml_comment = false;
             if self.highlight_char(&mut index, opts, *c, &chars)
                 || self.highlight_comment(&mut index, opts, *c, &chars)
-                || self.highlight_primary_keywords(&mut index, &opts, &chars)
-                || self.highlight_secondary_keywords(&mut index, &opts, &chars)
+                || self.highlight_primary_keywords(&mut index, opts, &chars)
+                || self.highlight_secondary_keywords(&mut index, opts, &chars)
                 || self.highlight_string(&mut index, opts, *c, &chars)
                 || self.highlight_number(&mut index, opts, *c, &chars)
             {

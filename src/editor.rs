@@ -2,7 +2,7 @@ use crate::Document;
 use crate::Row;
 use crate::Terminal;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::time::Duration;
 use std::time::Instant;
 use std::{env, io};
@@ -137,7 +137,7 @@ impl Editor {
                     if let Some(position) =
                         editor
                             .document
-                            .find(&query, &editor.cursor_position, direction)
+                            .find(query, &editor.cursor_position, direction)
                     {
                         editor.cursor_position = position;
                         editor.scroll();
@@ -169,7 +169,7 @@ impl Editor {
                 }
                 self.should_quit = true
             }
-            Key::Ctrl('f') | Key::Ctrl('s') => self.search(),
+            Key::Ctrl('f' | 's') => self.search(),
             Key::Char(c) => {
                 self.document.insert(&self.cursor_position, c);
                 self.move_cursor(Key::Right);
@@ -280,13 +280,13 @@ impl Editor {
         self.cursor_position = Position { x, y }
     }
     fn draw_welcome_message(&self) -> std::io::Result<()> {
-        let mut welcome_message = format!("Hecto editor -- version {}", VERSION);
+        let mut welcome_message = format!("Hecto editor -- version {VERSION}");
         let width = self.terminal.size().width as usize;
         let len = welcome_message.len();
         #[allow(clippy::integer_arithmetic, clippy::integer_division)]
         let padding = width.saturating_sub(len) / 2;
         let spaces = " ".repeat(padding.saturating_sub(1));
-        welcome_message = format!("~{}{}", spaces, welcome_message);
+        welcome_message = format!("~{spaces}{welcome_message}");
         welcome_message.truncate(width);
         self.terminal.writeln(&welcome_message)
     }
@@ -334,11 +334,11 @@ impl Editor {
         #[allow(clippy::integer_arithmetic)]
         let len = status.len() + line_indicator.len();
         status.push_str(&" ".repeat(width.saturating_sub(len)));
-        status = format!("{}{}", status, line_indicator);
+        status = format!("{status}{line_indicator}");
         status.truncate(width);
         self.terminal.set_bg_color(STATUS_BG_COLOR)?;
         self.terminal.set_fg_color(STATUS_FG_COLOR)?;
-        self.terminal.writeln(&format!("{}", status))?;
+        self.terminal.writeln(&status.to_string())?;
         self.terminal.reset_fg_color()?;
         self.terminal.reset_bg_color()
     }
@@ -346,7 +346,7 @@ impl Editor {
     fn draw_message_bar(&self) -> std::io::Result<()> {
         self.terminal.clear_current_line()?;
         let message = &self.status_message;
-        if Instant::now() - message.time < Duration::new(5, 0) {
+        if message.time.elapsed() < Duration::new(5, 0) {
             let mut text = message.text.clone();
             text.truncate(self.terminal.size().width as usize);
             self.terminal.write(&text)?;
@@ -359,7 +359,7 @@ impl Editor {
     {
         let mut result = String::new();
         loop {
-            self.status_message = StatusMessage::from(format!("{}{}", prompt, result));
+            self.status_message = StatusMessage::from(format!("{prompt}{result}"));
             self.refresh_screen()?;
             let key = self.terminal.read_key()?;
             match key {

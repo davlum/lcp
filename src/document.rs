@@ -1,9 +1,8 @@
-use crate::FileType;
 use crate::Position;
 use crate::Row;
 use crate::SearchDirection;
-use std::fs;
-use std::io::{BufRead, Error, Read, Write};
+
+use std::io::BufRead;
 
 #[derive(Default)]
 pub struct Document {
@@ -12,23 +11,20 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn open(input: impl BufRead) -> Result<Self, std::io::Error> {
+    pub(crate) fn open(input: impl BufRead) -> Result<Self, std::io::Error> {
         let mut rows = Vec::new();
         for value in input.lines() {
             rows.push(Row::from(value?.as_str()));
         }
-        Ok(Self {
-            rows,
-            dirty: false,
-        })
+        Ok(Self { rows, dirty: false })
     }
-    pub fn row(&self, index: usize) -> Option<&Row> {
+    pub(crate) fn row(&self, index: usize) -> Option<&Row> {
         self.rows.get(index)
     }
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.rows.is_empty()
     }
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.rows.len()
     }
     fn insert_newline(&mut self, at: &Position) {
@@ -45,7 +41,7 @@ impl Document {
         #[allow(clippy::integer_arithmetic)]
         self.rows.insert(at.y + 1, new_row);
     }
-    pub fn insert(&mut self, at: &Position, c: char) {
+    pub(crate) fn insert(&mut self, at: &Position, c: char) {
         if at.y > self.rows.len() {
             return;
         }
@@ -71,7 +67,7 @@ impl Document {
         }
     }
     #[allow(clippy::integer_arithmetic, clippy::indexing_slicing)]
-    pub fn delete(&mut self, at: &Position) {
+    pub(crate) fn delete(&mut self, at: &Position) {
         let len = self.rows.len();
         if at.y >= len {
             return;
@@ -87,11 +83,16 @@ impl Document {
         }
         self.unhighlight_rows(at.y);
     }
-    pub fn is_dirty(&self) -> bool {
+    pub(crate) fn is_dirty(&self) -> bool {
         self.dirty
     }
     #[allow(clippy::indexing_slicing)]
-    pub fn find(&self, query: &str, at: &Position, direction: SearchDirection) -> Option<Position> {
+    pub(crate) fn find(
+        &self,
+        query: &str,
+        at: &Position,
+        direction: SearchDirection,
+    ) -> Option<Position> {
         if at.y >= self.rows.len() {
             return None;
         }
@@ -109,7 +110,7 @@ impl Document {
         };
         for _ in start..end {
             if let Some(row) = self.rows.get(position.y) {
-                if let Some(x) = row.find(&query, position.x, direction) {
+                if let Some(x) = row.find(query, position.x, direction) {
                     position.x = x;
                     return Some(position);
                 }
@@ -126,7 +127,7 @@ impl Document {
         }
         None
     }
-    pub fn highlight(&mut self, word: &Option<String>, until: Option<usize>) {
+    pub(crate) fn highlight(&mut self, word: &Option<String>, until: Option<usize>) {
         let mut start_with_comment = false;
         let until = if let Some(until) = until {
             if until.saturating_add(1) < self.rows.len() {
@@ -139,10 +140,7 @@ impl Document {
         };
         #[allow(clippy::indexing_slicing)]
         for row in &mut self.rows[..until] {
-            start_with_comment = row.highlight(
-                word,
-                start_with_comment,
-            );
+            start_with_comment = row.highlight(word, start_with_comment);
         }
     }
 }

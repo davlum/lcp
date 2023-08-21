@@ -26,3 +26,34 @@ impl Type {
         }
     }
 }
+
+#[derive(Default)]
+pub struct HighlightingOptions {
+    numbers: bool,
+    strings: bool,
+    characters: bool,
+    comments: bool,
+    primary_keywords: Vec<String>,
+    secondary_keywords: Vec<String>,
+}
+
+impl HighlightingOptions {
+    pub(crate) fn numbers(&self) -> bool {
+        self.numbers
+    }
+    pub(crate) fn strings(&self) -> bool {
+        self.strings
+    }
+    pub(crate) fn characters(&self) -> bool {
+        self.characters
+    }
+    pub(crate) fn comments(&self) -> bool {
+        self.comments
+    }
+    pub(crate) fn primary_keywords(&self) -> &Vec<String> {
+        &self.primary_keywords
+    }
+    pub(crate) fn secondary_keywords(&self) -> &Vec<String> {
+        &self.secondary_keywords
+    }
+}

@@ -1,6 +1,6 @@
 use crate::Position;
 use std::fs;
-use std::io::{self, stdout, Write};
+use std::io::{stdout, Write};
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::{IntoRawMode, RawTerminal};
@@ -17,7 +17,7 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    pub fn default() -> Result<Self, std::io::Error> {
+    pub(crate) fn default() -> Result<Self, std::io::Error> {
         let size = termion::terminal_size()?;
         Ok(Self {
             size: Size {
@@ -28,15 +28,15 @@ impl Terminal {
             tty: get_tty()?,
         })
     }
-    pub fn size(&self) -> &Size {
+    pub(crate) fn size(&self) -> &Size {
         &self.size
     }
-    pub fn clear_screen(&self) -> std::io::Result<()> {
+    pub(crate) fn clear_screen(&self) -> std::io::Result<()> {
         write!(&self.tty, "{}", termion::clear::All)
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    pub fn cursor_position(&self, position: &Position) -> std::io::Result<()> {
+    pub(crate) fn cursor_position(&self, position: &Position) -> std::io::Result<()> {
         let Position { mut x, mut y } = position;
         x = x.saturating_add(1);
         y = y.saturating_add(1);
@@ -44,10 +44,10 @@ impl Terminal {
         let y = y as u16;
         write!(&self.tty, "{}", termion::cursor::Goto(x, y))
     }
-    pub fn flush(&self) -> Result<(), std::io::Error> {
+    pub(crate) fn flush(&self) -> Result<(), std::io::Error> {
         std::io::stdout().flush()
     }
-    pub fn read_key(&self) -> Result<Key, std::io::Error> {
+    pub(crate) fn read_key(&self) -> Result<Key, std::io::Error> {
         loop {
             if let Some(key) = self.tty.try_clone()?.keys().next() {
                 return key;
@@ -55,30 +55,30 @@ impl Terminal {
         }
     }
     pub(crate) fn writeln(&self, s: &str) -> std::io::Result<()> {
-        writeln!(&self.tty, "{}\r", s)
+        writeln!(&self.tty, "{s}\r")
     }
     pub(crate) fn write(&self, s: &str) -> std::io::Result<()> {
-        write!(&self.tty, "{}", s)
+        write!(&self.tty, "{s}")
     }
-    pub fn cursor_hide(&self) -> std::io::Result<()> {
+    pub(crate) fn cursor_hide(&self) -> std::io::Result<()> {
         write!(&self.tty, "{}", termion::cursor::Hide)
     }
-    pub fn cursor_show(&self) -> std::io::Result<()> {
+    pub(crate) fn cursor_show(&self) -> std::io::Result<()> {
         write!(&self.tty, "{}", termion::cursor::Show)
     }
-    pub fn clear_current_line(&self) -> std::io::Result<()> {
+    pub(crate) fn clear_current_line(&self) -> std::io::Result<()> {
         write!(&self.tty, "{}", termion::clear::CurrentLine)
     }
-    pub fn set_bg_color(&self, color: color::Rgb) -> std::io::Result<()> {
+    pub(crate) fn set_bg_color(&self, color: color::Rgb) -> std::io::Result<()> {
         write!(&self.tty, "{}", color::Bg(color))
     }
-    pub fn reset_bg_color(&self) -> std::io::Result<()> {
+    pub(crate) fn reset_bg_color(&self) -> std::io::Result<()> {
         write!(&self.tty, "{}", color::Bg(color::Reset))
     }
-    pub fn set_fg_color(&self, color: color::Rgb) -> std::io::Result<()> {
+    pub(crate) fn set_fg_color(&self, color: color::Rgb) -> std::io::Result<()> {
         write!(&self.tty, "{}", color::Fg(color))
     }
-    pub fn reset_fg_color(&self) -> std::io::Result<()> {
+    pub(crate) fn reset_fg_color(&self) -> std::io::Result<()> {
         write!(&self.tty, "{}", color::Fg(color::Reset))
     }
 }
