@@ -413,5 +413,5 @@ impl Editor {
 
 fn die(e: std::io::Error) {
     Terminal::clear_screen();
-    panic!(e);
+    panic!("{e}");
 }
