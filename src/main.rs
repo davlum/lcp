@@ -25,5 +25,8 @@ pub use row::Row;
 pub use terminal::Terminal;
 
 fn main() {
-    Editor::default().expect("Failed to read input.").run();
+    match Editor::default().expect("Failed to read input.").run() {
+        Ok(_) => {}
+        Err(e) => println!("Error while running program: {e}"),
+    }
 }

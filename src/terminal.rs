@@ -31,18 +31,18 @@ impl Terminal {
     pub fn size(&self) -> &Size {
         &self.size
     }
-    pub fn clear_screen(&self) {
-        write!(&self.tty, "{}", termion::clear::All);
+    pub fn clear_screen(&self) -> std::io::Result<()> {
+        write!(&self.tty, "{}", termion::clear::All)
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    pub fn cursor_position(&self, position: &Position) {
+    pub fn cursor_position(&self, position: &Position) -> std::io::Result<()> {
         let Position { mut x, mut y } = position;
         x = x.saturating_add(1);
         y = y.saturating_add(1);
         let x = x as u16;
         let y = y as u16;
-        write!(&self.tty, "{}", termion::cursor::Goto(x, y));
+        write!(&self.tty, "{}", termion::cursor::Goto(x, y))
     }
     pub fn flush(&self) -> Result<(), std::io::Error> {
         std::io::stdout().flush()
@@ -54,25 +54,31 @@ impl Terminal {
             }
         }
     }
-    pub fn cursor_hide(&self) {
-        write!(&self.tty, "{}", termion::cursor::Hide);
+    pub(crate) fn writeln(&self, s: &str) -> std::io::Result<()> {
+        writeln!(&self.tty, "{}\r", s)
     }
-    pub fn cursor_show(&self) {
-        write!(&self.tty, "{}", termion::cursor::Show);
+    pub(crate) fn write(&self, s: &str) -> std::io::Result<()> {
+        write!(&self.tty, "{}", s)
     }
-    pub fn clear_current_line(&self) {
-        write!(&self.tty, "{}", termion::clear::CurrentLine);
+    pub fn cursor_hide(&self) -> std::io::Result<()> {
+        write!(&self.tty, "{}", termion::cursor::Hide)
     }
-    pub fn set_bg_color(&self, color: color::Rgb) {
-        write!(&self.tty, "{}", color::Bg(color));
+    pub fn cursor_show(&self) -> std::io::Result<()> {
+        write!(&self.tty, "{}", termion::cursor::Show)
     }
-    pub fn reset_bg_color(&self) {
-        write!(&self.tty, "{}", color::Bg(color::Reset));
+    pub fn clear_current_line(&self) -> std::io::Result<()> {
+        write!(&self.tty, "{}", termion::clear::CurrentLine)
     }
-    pub fn set_fg_color(&self, color: color::Rgb) {
-        write!(&self.tty, "{}", color::Fg(color));
+    pub fn set_bg_color(&self, color: color::Rgb) -> std::io::Result<()> {
+        write!(&self.tty, "{}", color::Bg(color))
     }
-    pub fn reset_fg_color(&self) {
-        write!(&self.tty, "{}", color::Fg(color::Reset));
+    pub fn reset_bg_color(&self) -> std::io::Result<()> {
+        write!(&self.tty, "{}", color::Bg(color::Reset))
+    }
+    pub fn set_fg_color(&self, color: color::Rgb) -> std::io::Result<()> {
+        write!(&self.tty, "{}", color::Fg(color))
+    }
+    pub fn reset_fg_color(&self) -> std::io::Result<()> {
+        write!(&self.tty, "{}", color::Fg(color::Reset))
     }
 }

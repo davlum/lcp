@@ -51,18 +51,19 @@ pub struct Editor {
 }
 
 impl Editor {
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> std::io::Result<()> {
         loop {
             if let Err(error) = self.refresh_screen() {
-                self.die(error);
+                self.die(error)?;
             }
             if self.should_quit {
                 break;
             }
             if let Err(error) = self.process_keypress() {
-                self.die(error);
+                self.die(error)?;
             }
         }
+        Ok(())
     }
     pub fn default() -> Result<Self, std::io::Error> {
         let args: Vec<String> = env::args().collect();
@@ -90,11 +91,11 @@ impl Editor {
     }
 
     fn refresh_screen(&mut self) -> Result<(), std::io::Error> {
-        self.terminal.cursor_hide();
-        self.terminal.cursor_position(&Position::default());
+        self.terminal.cursor_hide()?;
+        self.terminal.cursor_position(&Position::default())?;
         if self.should_quit {
-            self.terminal.clear_screen();
-            println!("Goodbye.\r");
+            self.terminal.clear_screen()?;
+            self.terminal.writeln("Goodbye.")?;
         } else {
             self.document.highlight(
                 &self.highlighted_word,
@@ -104,15 +105,15 @@ impl Editor {
                         .saturating_add(self.terminal.size().height as usize),
                 ),
             );
-            self.draw_rows();
-            self.draw_status_bar();
-            self.draw_message_bar();
+            self.draw_rows()?;
+            self.draw_status_bar()?;
+            self.draw_message_bar()?;
             self.terminal.cursor_position(&Position {
                 x: self.cursor_position.x.saturating_sub(self.offset.x),
                 y: self.cursor_position.y.saturating_sub(self.offset.y),
-            });
+            })?;
         }
-        self.terminal.cursor_show();
+        self.terminal.cursor_show()?;
         self.terminal.flush()
     }
 
@@ -278,7 +279,7 @@ impl Editor {
 
         self.cursor_position = Position { x, y }
     }
-    fn draw_welcome_message(&self) {
+    fn draw_welcome_message(&self) -> std::io::Result<()> {
         let mut welcome_message = format!("Hecto editor -- version {}", VERSION);
         let width = self.terminal.size().width as usize;
         let len = welcome_message.len();
@@ -287,33 +288,34 @@ impl Editor {
         let spaces = " ".repeat(padding.saturating_sub(1));
         welcome_message = format!("~{}{}", spaces, welcome_message);
         welcome_message.truncate(width);
-        println!("{}\r", welcome_message);
+        self.terminal.writeln(&welcome_message)
     }
-    pub fn draw_row(&self, row: &Row) {
+    pub fn draw_row(&self, row: &Row) -> std::io::Result<()> {
         let width = self.terminal.size().width as usize;
         let start = self.offset.x;
         let end = self.offset.x.saturating_add(width);
         let row = row.render(start, end);
-        println!("{}\r", row)
+        self.terminal.writeln(&row)
     }
     #[allow(clippy::integer_division, clippy::integer_arithmetic)]
-    fn draw_rows(&self) {
+    fn draw_rows(&self) -> std::io::Result<()> {
         let height = self.terminal.size().height;
         for terminal_row in 0..height {
-            self.terminal.clear_current_line();
+            self.terminal.clear_current_line()?;
             if let Some(row) = self
                 .document
                 .row(self.offset.y.saturating_add(terminal_row as usize))
             {
-                self.draw_row(row);
+                self.draw_row(row)?;
             } else if self.document.is_empty() && terminal_row == height / 3 {
-                self.draw_welcome_message();
+                self.draw_welcome_message()?;
             } else {
-                println!("~\r");
+                self.terminal.writeln("~")?;
             }
         }
+        Ok(())
     }
-    fn draw_status_bar(&self) {
+    fn draw_status_bar(&self) -> std::io::Result<()> {
         let mut status;
         let width = self.terminal.size().width as usize;
         let modified_indicator = if self.document.is_dirty() {
@@ -334,20 +336,22 @@ impl Editor {
         status.push_str(&" ".repeat(width.saturating_sub(len)));
         status = format!("{}{}", status, line_indicator);
         status.truncate(width);
-        self.terminal.set_bg_color(STATUS_BG_COLOR);
-        self.terminal.set_fg_color(STATUS_FG_COLOR);
-        println!("{}\r", status);
-        self.terminal.reset_fg_color();
-        self.terminal.reset_bg_color();
+        self.terminal.set_bg_color(STATUS_BG_COLOR)?;
+        self.terminal.set_fg_color(STATUS_FG_COLOR)?;
+        self.terminal.writeln(&format!("{}", status))?;
+        self.terminal.reset_fg_color()?;
+        self.terminal.reset_bg_color()
     }
-    fn draw_message_bar(&self) {
-        self.terminal.clear_current_line();
+
+    fn draw_message_bar(&self) -> std::io::Result<()> {
+        self.terminal.clear_current_line()?;
         let message = &self.status_message;
         if Instant::now() - message.time < Duration::new(5, 0) {
             let mut text = message.text.clone();
             text.truncate(self.terminal.size().width as usize);
-            print!("{}", text);
+            self.terminal.write(&text)?;
         }
+        Ok(())
     }
     fn prompt<C>(&mut self, prompt: &str, mut callback: C) -> Result<Option<String>, std::io::Error>
     where
@@ -381,8 +385,8 @@ impl Editor {
         Ok(Some(result))
     }
 
-    fn die(&self, e: std::io::Error) {
-        self.terminal.clear_screen();
+    fn die(&self, e: std::io::Error) -> std::io::Result<()> {
+        self.terminal.clear_screen()?;
         panic!("{e}");
     }
 }
