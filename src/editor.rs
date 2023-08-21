@@ -1,9 +1,11 @@
 use crate::Document;
 use crate::Row;
 use crate::Terminal;
-use std::env;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::time::Duration;
 use std::time::Instant;
+use std::{env, io};
 use termion::color;
 use termion::event::Key;
 
@@ -52,34 +54,30 @@ impl Editor {
     pub fn run(&mut self) {
         loop {
             if let Err(error) = self.refresh_screen() {
-                die(error);
+                self.die(error);
             }
             if self.should_quit {
                 break;
             }
             if let Err(error) = self.process_keypress() {
-                die(error);
+                self.die(error);
             }
         }
     }
-    pub fn default() -> Self {
+    pub fn default() -> Result<Self, std::io::Error> {
         let args: Vec<String> = env::args().collect();
-        let mut initial_status =
-            String::from("HELP: Ctrl-F = find | Ctrl-S = save | Ctrl-Q = quit");
+        let initial_status = String::from("HELP: Ctrl-F = find | Ctrl-S = save | Ctrl-Q = quit");
 
         let document = if let Some(file_name) = args.get(1) {
-            let doc = Document::open(file_name);
-            if let Ok(doc) = doc {
-                doc
-            } else {
-                initial_status = format!("ERR: Could not open file: {}", file_name);
-                Document::default()
-            }
+            let reader = BufReader::new(File::open(file_name)?);
+            Document::open(reader)?
         } else {
-            Document::default()
+            let stdin = io::stdin();
+            let lines = BufReader::new(stdin.lock());
+            Document::open(lines)?
         };
 
-        Self {
+        Ok(Self {
             should_quit: false,
             terminal: Terminal::default().expect("Failed to initialize terminal"),
             document,
@@ -88,14 +86,14 @@ impl Editor {
             status_message: StatusMessage::from(initial_status),
             quit_times: QUIT_TIMES,
             highlighted_word: None,
-        }
+        })
     }
 
     fn refresh_screen(&mut self) -> Result<(), std::io::Error> {
-        Terminal::cursor_hide();
-        Terminal::cursor_position(&Position::default());
+        self.terminal.cursor_hide();
+        self.terminal.cursor_position(&Position::default());
         if self.should_quit {
-            Terminal::clear_screen();
+            self.terminal.clear_screen();
             println!("Goodbye.\r");
         } else {
             self.document.highlight(
@@ -109,30 +107,15 @@ impl Editor {
             self.draw_rows();
             self.draw_status_bar();
             self.draw_message_bar();
-            Terminal::cursor_position(&Position {
+            self.terminal.cursor_position(&Position {
                 x: self.cursor_position.x.saturating_sub(self.offset.x),
                 y: self.cursor_position.y.saturating_sub(self.offset.y),
             });
         }
-        Terminal::cursor_show();
-        Terminal::flush()
+        self.terminal.cursor_show();
+        self.terminal.flush()
     }
-    fn save(&mut self) {
-        if self.document.file_name.is_none() {
-            let new_name = self.prompt("Save as: ", |_, _, _| {}).unwrap_or(None);
-            if new_name.is_none() {
-                self.status_message = StatusMessage::from("Save aborted.".to_string());
-                return;
-            }
-            self.document.file_name = new_name;
-        }
 
-        if self.document.save().is_ok() {
-            self.status_message = StatusMessage::from("File saved successfully.".to_string());
-        } else {
-            self.status_message = StatusMessage::from("Error writing file!".to_string());
-        }
-    }
     fn search(&mut self) {
         let old_position = self.cursor_position.clone();
         let mut direction = SearchDirection::Forward;
@@ -172,7 +155,7 @@ impl Editor {
         self.highlighted_word = None;
     }
     fn process_keypress(&mut self) -> Result<(), std::io::Error> {
-        let pressed_key = Terminal::read_key()?;
+        let pressed_key = self.terminal.read_key()?;
         match pressed_key {
             Key::Ctrl('q') => {
                 if self.quit_times > 0 && self.document.is_dirty() {
@@ -185,8 +168,7 @@ impl Editor {
                 }
                 self.should_quit = true
             }
-            Key::Ctrl('s') => self.save(),
-            Key::Ctrl('f') => self.search(),
+            Key::Ctrl('f') | Key::Ctrl('s') => self.search(),
             Key::Char(c) => {
                 self.document.insert(&self.cursor_position, c);
                 self.move_cursor(Key::Right);
@@ -318,7 +300,7 @@ impl Editor {
     fn draw_rows(&self) {
         let height = self.terminal.size().height;
         for terminal_row in 0..height {
-            Terminal::clear_current_line();
+            self.terminal.clear_current_line();
             if let Some(row) = self
                 .document
                 .row(self.offset.y.saturating_add(terminal_row as usize))
@@ -340,21 +322,10 @@ impl Editor {
             ""
         };
 
-        let mut file_name = "[No Name]".to_string();
-        if let Some(name) = &self.document.file_name {
-            file_name = name.clone();
-            file_name.truncate(20);
-        }
-        status = format!(
-            "{} - {} lines{}",
-            file_name,
-            self.document.len(),
-            modified_indicator
-        );
+        status = format!("{} lines{}", self.document.len(), modified_indicator);
 
         let line_indicator = format!(
-            "{} | {}/{}",
-            self.document.file_type(),
+            "Line {}/{}",
             self.cursor_position.y.saturating_add(1),
             self.document.len()
         );
@@ -363,14 +334,14 @@ impl Editor {
         status.push_str(&" ".repeat(width.saturating_sub(len)));
         status = format!("{}{}", status, line_indicator);
         status.truncate(width);
-        Terminal::set_bg_color(STATUS_BG_COLOR);
-        Terminal::set_fg_color(STATUS_FG_COLOR);
+        self.terminal.set_bg_color(STATUS_BG_COLOR);
+        self.terminal.set_fg_color(STATUS_FG_COLOR);
         println!("{}\r", status);
-        Terminal::reset_fg_color();
-        Terminal::reset_bg_color();
+        self.terminal.reset_fg_color();
+        self.terminal.reset_bg_color();
     }
     fn draw_message_bar(&self) {
-        Terminal::clear_current_line();
+        self.terminal.clear_current_line();
         let message = &self.status_message;
         if Instant::now() - message.time < Duration::new(5, 0) {
             let mut text = message.text.clone();
@@ -386,7 +357,7 @@ impl Editor {
         loop {
             self.status_message = StatusMessage::from(format!("{}{}", prompt, result));
             self.refresh_screen()?;
-            let key = Terminal::read_key()?;
+            let key = self.terminal.read_key()?;
             match key {
                 Key::Backspace => result.truncate(result.len().saturating_sub(1)),
                 Key::Char('\n') => break,
@@ -409,9 +380,9 @@ impl Editor {
         }
         Ok(Some(result))
     }
-}
 
-fn die(e: std::io::Error) {
-    Terminal::clear_screen();
-    panic!("{e}");
+    fn die(&self, e: std::io::Error) {
+        self.terminal.clear_screen();
+        panic!("{e}");
+    }
 }

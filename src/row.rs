@@ -406,10 +406,10 @@ impl Row {
     #[allow(clippy::indexing_slicing, clippy::integer_arithmetic)]
     pub fn highlight(
         &mut self,
-        opts: &HighlightingOptions,
         word: &Option<String>,
         start_with_comment: bool,
     ) -> bool {
+        let opts = &HighlightingOptions::default();
         let chars: Vec<char> = self.string.chars().collect();
         if self.is_highlighted && word.is_none() {
             if let Some(hl_type) = self.highlighting.last() {

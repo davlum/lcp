@@ -13,6 +13,8 @@ mod filetype;
 mod highlighting;
 mod row;
 mod terminal;
+mod tokenizer;
+
 pub use document::Document;
 use editor::Editor;
 pub use editor::Position;
@@ -23,5 +25,5 @@ pub use row::Row;
 pub use terminal::Terminal;
 
 fn main() {
-    Editor::default().run();
+    Editor::default().expect("Failed to read input.").run();
 }
