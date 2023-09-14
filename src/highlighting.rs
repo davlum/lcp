@@ -1,59 +1,28 @@
-use termion::color;
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum Type {
-    None,
-    Number,
-    Match,
-    String,
-    Character,
-    Comment,
-    MultilineComment,
-    PrimaryKeywords,
-    SecondaryKeywords,
+use crate::Position;
+
+#[derive(Clone, Debug)]
+pub(crate) struct HighlightedText {
+    pub(crate) text: String,
+    pub(crate) left_position: Position,
+    pub(crate) right_position: Position,
 }
 
-impl Type {
-    pub fn to_color(self) -> impl color::Color {
-        match self {
-            Type::Number => color::Rgb(220, 163, 163),
-            Type::Match => color::Rgb(38, 139, 210),
-            Type::String => color::Rgb(211, 54, 130),
-            Type::Character => color::Rgb(108, 113, 196),
-            Type::Comment | Type::MultilineComment => color::Rgb(133, 153, 0),
-            Type::PrimaryKeywords => color::Rgb(181, 137, 0),
-            Type::SecondaryKeywords => color::Rgb(42, 161, 152),
-            _ => color::Rgb(255, 255, 255),
+impl HighlightedText {
+    pub(crate) fn from_word(text: &str, position: Position) -> HighlightedText {
+        let right_x = position.x + text.len();
+        HighlightedText {
+            text: text.to_string(),
+            left_position: position,
+            right_position: Position {
+                x: right_x,
+                y: position.y,
+            },
         }
     }
 }
 
-#[derive(Default)]
-pub struct HighlightingOptions {
-    numbers: bool,
-    strings: bool,
-    characters: bool,
-    comments: bool,
-    primary_keywords: Vec<String>,
-    secondary_keywords: Vec<String>,
-}
-
-impl HighlightingOptions {
-    pub(crate) fn numbers(&self) -> bool {
-        self.numbers
-    }
-    pub(crate) fn strings(&self) -> bool {
-        self.strings
-    }
-    pub(crate) fn characters(&self) -> bool {
-        self.characters
-    }
-    pub(crate) fn comments(&self) -> bool {
-        self.comments
-    }
-    pub(crate) fn primary_keywords(&self) -> &Vec<String> {
-        &self.primary_keywords
-    }
-    pub(crate) fn secondary_keywords(&self) -> &Vec<String> {
-        &self.secondary_keywords
-    }
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum Type {
+    None,
+    Highlighted,
 }

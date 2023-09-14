@@ -2,12 +2,12 @@ use crate::Position;
 use crate::Row;
 use crate::SearchDirection;
 
+use crate::highlighting::HighlightedText;
 use std::io::BufRead;
 
 #[derive(Default)]
 pub struct Document {
     rows: Vec<Row>,
-    dirty: bool,
 }
 
 impl Document {
@@ -16,7 +16,7 @@ impl Document {
         for value in input.lines() {
             rows.push(Row::from(value?.as_str()));
         }
-        Ok(Self { rows, dirty: false })
+        Ok(Self { rows })
     }
     pub(crate) fn row(&self, index: usize) -> Option<&Row> {
         self.rows.get(index)
@@ -27,38 +27,6 @@ impl Document {
     pub(crate) fn len(&self) -> usize {
         self.rows.len()
     }
-    fn insert_newline(&mut self, at: &Position) {
-        if at.y > self.rows.len() {
-            return;
-        }
-        if at.y == self.rows.len() {
-            self.rows.push(Row::default());
-            return;
-        }
-        #[allow(clippy::indexing_slicing)]
-        let current_row = &mut self.rows[at.y];
-        let new_row = current_row.split(at.x);
-        #[allow(clippy::integer_arithmetic)]
-        self.rows.insert(at.y + 1, new_row);
-    }
-    pub(crate) fn insert(&mut self, at: &Position, c: char) {
-        if at.y > self.rows.len() {
-            return;
-        }
-        self.dirty = true;
-        if c == '\n' {
-            self.insert_newline(at);
-        } else if at.y == self.rows.len() {
-            let mut row = Row::default();
-            row.insert(0, c);
-            self.rows.push(row);
-        } else {
-            #[allow(clippy::indexing_slicing)]
-            let row = &mut self.rows[at.y];
-            row.insert(at.x, c);
-        }
-        self.unhighlight_rows(at.y);
-    }
 
     fn unhighlight_rows(&mut self, start: usize) {
         let start = start.saturating_sub(1);
@@ -66,26 +34,7 @@ impl Document {
             row.is_highlighted = false;
         }
     }
-    #[allow(clippy::integer_arithmetic, clippy::indexing_slicing)]
-    pub(crate) fn delete(&mut self, at: &Position) {
-        let len = self.rows.len();
-        if at.y >= len {
-            return;
-        }
-        self.dirty = true;
-        if at.x == self.rows[at.y].len() && at.y + 1 < len {
-            let next_row = self.rows.remove(at.y + 1);
-            let row = &mut self.rows[at.y];
-            row.append(&next_row);
-        } else {
-            let row = &mut self.rows[at.y];
-            row.delete(at.x);
-        }
-        self.unhighlight_rows(at.y);
-    }
-    pub(crate) fn is_dirty(&self) -> bool {
-        self.dirty
-    }
+
     #[allow(clippy::indexing_slicing)]
     pub(crate) fn find(
         &self,
@@ -127,20 +76,11 @@ impl Document {
         }
         None
     }
-    pub(crate) fn highlight(&mut self, word: &Option<String>, until: Option<usize>) {
-        let mut start_with_comment = false;
-        let until = if let Some(until) = until {
-            if until.saturating_add(1) < self.rows.len() {
-                until.saturating_add(1)
-            } else {
-                self.rows.len()
+    pub(crate) fn highlight(&mut self, maybe_text: &Option<HighlightedText>) {
+        if let Some(text) = maybe_text {
+            if let Some(row) = self.rows.get_mut(text.left_position.y) {
+                row.highlight(text);
             }
-        } else {
-            self.rows.len()
-        };
-        #[allow(clippy::indexing_slicing)]
-        for row in &mut self.rows[..until] {
-            start_with_comment = row.highlight(word, start_with_comment);
         }
     }
 }

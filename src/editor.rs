@@ -1,10 +1,10 @@
+use crate::highlighting::HighlightedText;
 use crate::Document;
 use crate::Row;
 use crate::Terminal;
+use arboard::Clipboard;
 use std::fs::File;
 use std::io::BufReader;
-use std::time::Duration;
-use std::time::Instant;
 use std::{env, io};
 use termion::color;
 use termion::event::Key;
@@ -12,42 +12,28 @@ use termion::event::Key;
 const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
 const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const QUIT_TIMES: u8 = 3;
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum SearchDirection {
     Forward,
     Backward,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct Position {
     pub x: usize,
     pub y: usize,
 }
 
-struct StatusMessage {
-    text: String,
-    time: Instant,
-}
-impl StatusMessage {
-    fn from(message: String) -> Self {
-        Self {
-            time: Instant::now(),
-            text: message,
-        }
-    }
-}
-
 pub struct Editor {
     should_quit: bool,
+    clipboard: Clipboard,
     terminal: Terminal,
     cursor_position: Position,
     offset: Position,
     document: Document,
-    status_message: StatusMessage,
-    quit_times: u8,
-    highlighted_word: Option<String>,
+    status_message: String,
+    highlighted_text: Option<HighlightedText>,
 }
 
 impl Editor {
@@ -80,13 +66,13 @@ impl Editor {
 
         Ok(Self {
             should_quit: false,
+            clipboard: Clipboard::new().expect("Failed to initialize clipboard"),
             terminal: Terminal::default().expect("Failed to initialize terminal"),
             document,
             cursor_position: Position::default(),
             offset: Position::default(),
-            status_message: StatusMessage::from(initial_status),
-            quit_times: QUIT_TIMES,
-            highlighted_word: None,
+            status_message: initial_status,
+            highlighted_text: None,
         })
     }
 
@@ -95,16 +81,12 @@ impl Editor {
         self.terminal.cursor_position(&Position::default())?;
         if self.should_quit {
             self.terminal.clear_screen()?;
-            self.terminal.writeln("Goodbye.")?;
+            match &self.highlighted_text {
+                None => self.terminal.writeln("Copied Nothing.")?,
+                Some(word) => self.terminal.writeln(&format!("Copied: {}", word.text))?,
+            }
         } else {
-            self.document.highlight(
-                &self.highlighted_word,
-                Some(
-                    self.offset
-                        .y
-                        .saturating_add(self.terminal.size().height as usize),
-                ),
-            );
+            self.document.highlight(&self.highlighted_text);
             self.draw_rows()?;
             self.draw_status_bar()?;
             self.draw_message_bar()?;
@@ -144,7 +126,8 @@ impl Editor {
                     } else if moved {
                         editor.move_cursor(Key::Left);
                     }
-                    editor.highlighted_word = Some(query.to_string());
+                    let text = HighlightedText::from_word(query, editor.cursor_position);
+                    editor.highlighted_text = Some(text);
                 },
             )
             .unwrap_or(None);
@@ -153,33 +136,23 @@ impl Editor {
             self.cursor_position = old_position;
             self.scroll();
         }
-        self.highlighted_word = None;
+        self.highlighted_text = None;
     }
     fn process_keypress(&mut self) -> Result<(), std::io::Error> {
         let pressed_key = self.terminal.read_key()?;
         match pressed_key {
-            Key::Ctrl('q') => {
-                if self.quit_times > 0 && self.document.is_dirty() {
-                    self.status_message = StatusMessage::from(format!(
-                        "WARNING! File has unsaved changes. Press Ctrl-Q {} more times to quit.",
-                        self.quit_times
-                    ));
-                    self.quit_times -= 1;
-                    return Ok(());
-                }
-                self.should_quit = true
+            Key::Ctrl('q' | 'c') | Key::Char('q') | Key::Esc => {
+                self.highlighted_text = None;
+                self.should_quit = true;
             }
-            Key::Ctrl('f' | 's') => self.search(),
-            Key::Char(c) => {
-                self.document.insert(&self.cursor_position, c);
-                self.move_cursor(Key::Right);
-            }
-            Key::Delete => self.document.delete(&self.cursor_position),
-            Key::Backspace => {
-                if self.cursor_position.x > 0 || self.cursor_position.y > 0 {
-                    self.move_cursor(Key::Left);
-                    self.document.delete(&self.cursor_position);
+            Key::Ctrl('f' | 's') | Key::Char('/') => self.search(),
+            Key::Char('\r') | Key::Char('\n') => {
+                if let Some(highlighted_word) = &self.highlighted_text {
+                    self.clipboard
+                        .set_text(highlighted_word.text.to_string())
+                        .expect("Could not copy to clipboard");
                 }
+                self.should_quit = true;
             }
             Key::Up
             | Key::Down
@@ -192,10 +165,6 @@ impl Editor {
             _ => (),
         }
         self.scroll();
-        if self.quit_times < QUIT_TIMES {
-            self.quit_times = QUIT_TIMES;
-            self.status_message = StatusMessage::from(String::new());
-        }
         Ok(())
     }
     fn scroll(&mut self) {
@@ -318,20 +287,15 @@ impl Editor {
     fn draw_status_bar(&self) -> std::io::Result<()> {
         let mut status;
         let width = self.terminal.size().width as usize;
-        let modified_indicator = if self.document.is_dirty() {
-            " (modified)"
-        } else {
-            ""
-        };
 
-        status = format!("{} lines{}", self.document.len(), modified_indicator);
+        status = format!("{} lines", self.document.len());
 
         let line_indicator = format!(
             "Line {}/{}",
             self.cursor_position.y.saturating_add(1),
             self.document.len()
         );
-        #[allow(clippy::integer_arithmetic)]
+
         let len = status.len() + line_indicator.len();
         status.push_str(&" ".repeat(width.saturating_sub(len)));
         status = format!("{status}{line_indicator}");
@@ -345,12 +309,9 @@ impl Editor {
 
     fn draw_message_bar(&self) -> std::io::Result<()> {
         self.terminal.clear_current_line()?;
-        let message = &self.status_message;
-        if message.time.elapsed() < Duration::new(5, 0) {
-            let mut text = message.text.clone();
-            text.truncate(self.terminal.size().width as usize);
-            self.terminal.write(&text)?;
-        }
+        let mut message = self.status_message.clone();
+        message.truncate(self.terminal.size().width as usize);
+        self.terminal.write(&message)?;
         Ok(())
     }
     fn prompt<C>(&mut self, prompt: &str, mut callback: C) -> Result<Option<String>, std::io::Error>
@@ -359,7 +320,7 @@ impl Editor {
     {
         let mut result = String::new();
         loop {
-            self.status_message = StatusMessage::from(format!("{prompt}{result}"));
+            self.status_message = format!("{prompt}{result}");
             self.refresh_screen()?;
             let key = self.terminal.read_key()?;
             match key {
@@ -378,7 +339,7 @@ impl Editor {
             }
             callback(self, key, &result);
         }
-        self.status_message = StatusMessage::from(String::new());
+        self.status_message = String::new();
         if result.is_empty() {
             return Ok(None);
         }
