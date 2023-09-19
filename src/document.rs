@@ -5,16 +5,31 @@ use crate::SearchDirection;
 use crate::highlighting::HighlightedText;
 use std::io::BufRead;
 
+#[derive(Clone, Debug)]
+pub enum Separator {
+    Whitespace,
+    Other(char),
+}
+
+impl Separator {
+    pub(crate) fn is_char(&self, c: char) -> bool {
+        match self {
+            Separator::Whitespace => c.is_whitespace() || c.is_control(),
+            Separator::Other(sep) => c == *sep,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Document {
     rows: Vec<Row>,
 }
 
 impl Document {
-    pub(crate) fn open(input: impl BufRead) -> Result<Self, std::io::Error> {
+    pub(crate) fn open(input: impl BufRead, separator: Separator) -> Result<Self, std::io::Error> {
         let mut rows = Vec::new();
         for value in input.lines() {
-            rows.push(Row::from(value?.as_str()));
+            rows.push(Row::new(value?.as_str(), &separator));
         }
         Ok(Self { rows })
     }
@@ -28,10 +43,9 @@ impl Document {
         self.rows.len()
     }
 
-    fn unhighlight_rows(&mut self, start: usize) {
-        let start = start.saturating_sub(1);
-        for row in self.rows.iter_mut().skip(start) {
-            row.is_highlighted = false;
+    fn unhighlight_rows(&mut self) {
+        for row in self.rows.iter_mut() {
+            row.unhighlight();
         }
     }
 
@@ -76,10 +90,41 @@ impl Document {
         }
         None
     }
-    pub(crate) fn highlight(&mut self, maybe_text: &Option<HighlightedText>) {
+
+    pub(crate) fn get_text_at_pos(&self, position: &Position) -> Option<HighlightedText> {
+        if let Some(row) = self.rows.get(position.y) {
+            if let Some(tok) = row.tokens().get(position.x) {
+                let text = row.get_slice(tok);
+                let htext = HighlightedText {
+                    text: text.to_string(),
+                    token: *tok,
+                    position: *position,
+                };
+                return Some(htext);
+            }
+        }
+        None
+    }
+
+    pub(crate) fn highlight(
+        &mut self,
+        token_position: &Position,
+        maybe_text: &Option<HighlightedText>,
+    ) {
+        self.unhighlight_rows();
         if let Some(text) = maybe_text {
-            if let Some(row) = self.rows.get_mut(text.left_position.y) {
+            if let Some(row) = self.rows.get_mut(text.position.y) {
                 row.highlight(text);
+            }
+        } else if let Some(row) = self.rows.get_mut(token_position.y) {
+            if let Some(tok) = row.tokens().get(token_position.x) {
+                let text = row.get_slice(tok);
+                let htext = HighlightedText {
+                    text: text.to_string(),
+                    token: *tok,
+                    position: *token_position,
+                };
+                row.highlight(&htext);
             }
         }
     }

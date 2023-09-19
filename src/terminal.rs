@@ -63,9 +63,9 @@ impl Terminal {
     pub(crate) fn cursor_hide(&self) -> std::io::Result<()> {
         write!(&self.tty, "{}", termion::cursor::Hide)
     }
-    pub(crate) fn cursor_show(&self) -> std::io::Result<()> {
-        write!(&self.tty, "{}", termion::cursor::Show)
-    }
+    // pub(crate) fn cursor_show(&self) -> std::io::Result<()> {
+    //     write!(&self.tty, "{}", termion::cursor::Show)
+    // }
     pub(crate) fn clear_current_line(&self) -> std::io::Result<()> {
         write!(&self.tty, "{}", termion::clear::CurrentLine)
     }

@@ -1,3 +1,4 @@
+use crate::document::Separator;
 use crate::highlighting::HighlightedText;
 use crate::Document;
 use crate::Row;
@@ -5,7 +6,6 @@ use crate::Terminal;
 use arboard::Clipboard;
 use std::fs::File;
 use std::io::BufReader;
-use std::{env, io};
 use termion::color;
 use termion::event::Key;
 
@@ -33,7 +33,7 @@ pub struct Editor {
     offset: Position,
     document: Document,
     status_message: String,
-    highlighted_text: Option<HighlightedText>,
+    copied_text: Option<HighlightedText>,
 }
 
 impl Editor {
@@ -52,16 +52,19 @@ impl Editor {
         Ok(())
     }
     pub fn default() -> Result<Self, std::io::Error> {
-        let args: Vec<String> = env::args().collect();
-        let initial_status = String::from("HELP: Ctrl-F = find | Ctrl-S = save | Ctrl-Q = quit");
+        let args: Vec<String> = std::env::args().collect();
+        let initial_status = String::from(
+            "HELP: f OR / = find | q OR esc = quit | ENTER will copy highlighted text to clipboard",
+        );
+        let separator = Separator::Whitespace;
 
         let document = if let Some(file_name) = args.get(1) {
             let reader = BufReader::new(File::open(file_name)?);
-            Document::open(reader)?
+            Document::open(reader, separator)?
         } else {
-            let stdin = io::stdin();
+            let stdin = std::io::stdin();
             let lines = BufReader::new(stdin.lock());
-            Document::open(lines)?
+            Document::open(lines, separator)?
         };
 
         Ok(Self {
@@ -72,7 +75,7 @@ impl Editor {
             cursor_position: Position::default(),
             offset: Position::default(),
             status_message: initial_status,
-            highlighted_text: None,
+            copied_text: None,
         })
     }
 
@@ -81,12 +84,13 @@ impl Editor {
         self.terminal.cursor_position(&Position::default())?;
         if self.should_quit {
             self.terminal.clear_screen()?;
-            match &self.highlighted_text {
+            match &self.copied_text {
                 None => self.terminal.writeln("Copied Nothing.")?,
                 Some(word) => self.terminal.writeln(&format!("Copied: {}", word.text))?,
             }
         } else {
-            self.document.highlight(&self.highlighted_text);
+            self.document
+                .highlight(&self.cursor_position, &self.copied_text);
             self.draw_rows()?;
             self.draw_status_bar()?;
             self.draw_message_bar()?;
@@ -95,12 +99,12 @@ impl Editor {
                 y: self.cursor_position.y.saturating_sub(self.offset.y),
             })?;
         }
-        self.terminal.cursor_show()?;
+        // self.terminal.cursor_show()?;
         self.terminal.flush()
     }
 
     fn search(&mut self) {
-        let old_position = self.cursor_position.clone();
+        let old_position = self.cursor_position;
         let mut direction = SearchDirection::Forward;
         let query = self
             .prompt(
@@ -127,7 +131,7 @@ impl Editor {
                         editor.move_cursor(Key::Left);
                     }
                     let text = HighlightedText::from_word(query, editor.cursor_position);
-                    editor.highlighted_text = Some(text);
+                    editor.copied_text = Some(text);
                 },
             )
             .unwrap_or(None);
@@ -136,20 +140,20 @@ impl Editor {
             self.cursor_position = old_position;
             self.scroll();
         }
-        self.highlighted_text = None;
+        self.copied_text = None;
     }
     fn process_keypress(&mut self) -> Result<(), std::io::Error> {
         let pressed_key = self.terminal.read_key()?;
         match pressed_key {
             Key::Ctrl('q' | 'c') | Key::Char('q') | Key::Esc => {
-                self.highlighted_text = None;
+                self.copied_text = None;
                 self.should_quit = true;
             }
             Key::Ctrl('f' | 's') | Key::Char('/') => self.search(),
             Key::Char('\r') | Key::Char('\n') => {
-                if let Some(highlighted_word) = &self.highlighted_text {
+                if let Some(copied_word) = &self.copied_text {
                     self.clipboard
-                        .set_text(highlighted_word.text.to_string())
+                        .set_text(copied_word.text.to_string())
                         .expect("Could not copy to clipboard");
                 }
                 self.should_quit = true;
@@ -186,36 +190,38 @@ impl Editor {
     fn move_cursor(&mut self, key: Key) {
         let terminal_height = self.terminal.size().height as usize;
         let Position { mut y, mut x } = self.cursor_position;
-        let height = self.document.len();
+        let height = self.document.len() - 1;
         let mut width = if let Some(row) = self.document.row(y) {
             row.len()
         } else {
             0
         };
         match key {
-            Key::Up => y = y.saturating_sub(1),
+            Key::Up => {
+                if y == 0 {
+                    y = height;
+                } else {
+                    y = y.saturating_sub(1)
+                }
+            }
             Key::Down => {
                 if y < height {
                     y = y.saturating_add(1);
+                } else {
+                    y = 0;
                 }
             }
             Key::Left => {
                 if x > 0 {
                     x -= 1;
-                } else if y > 0 {
-                    y -= 1;
-                    if let Some(row) = self.document.row(y) {
-                        x = row.len();
-                    } else {
-                        x = 0;
-                    }
+                } else {
+                    x = width
                 }
             }
             Key::Right => {
                 if x < width {
                     x += 1;
-                } else if y < height {
-                    y += 1;
+                } else {
                     x = 0;
                 }
             }
@@ -246,7 +252,8 @@ impl Editor {
             x = width;
         }
 
-        self.cursor_position = Position { x, y }
+        self.cursor_position = Position { x, y };
+        self.copied_text = self.document.get_text_at_pos(&self.cursor_position);
     }
     fn draw_welcome_message(&self) -> std::io::Result<()> {
         let mut welcome_message = format!("Hecto editor -- version {VERSION}");
@@ -285,24 +292,20 @@ impl Editor {
         Ok(())
     }
     fn draw_status_bar(&self) -> std::io::Result<()> {
-        let mut status;
         let width = self.terminal.size().width as usize;
 
-        status = format!("{} lines", self.document.len());
-
-        let line_indicator = format!(
-            "Line {}/{}",
+        let mut line_indicator = format!(
+            "{}/{} lines",
             self.cursor_position.y.saturating_add(1),
             self.document.len()
         );
 
-        let len = status.len() + line_indicator.len();
-        status.push_str(&" ".repeat(width.saturating_sub(len)));
-        status = format!("{status}{line_indicator}");
-        status.truncate(width);
+        let len = line_indicator.len();
+        line_indicator.push_str(&" ".repeat(width.saturating_sub(len)));
+        line_indicator.truncate(width);
         self.terminal.set_bg_color(STATUS_BG_COLOR)?;
         self.terminal.set_fg_color(STATUS_FG_COLOR)?;
-        self.terminal.writeln(&status.to_string())?;
+        self.terminal.writeln(&line_indicator.to_string())?;
         self.terminal.reset_fg_color()?;
         self.terminal.reset_bg_color()
     }

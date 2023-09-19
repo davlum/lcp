@@ -185,15 +185,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hecto"
-version = "0.1.0"
-dependencies = [
- "arboard",
- "termion",
- "unicode-segmentation",
-]
-
-[[package]]
 name = "image"
 version = "0.24.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -213,6 +204,15 @@ name = "jpeg-decoder"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc0000e42512c92e31c2252315bda326620a4e034105e900c98ec492fa077b3e"
+
+[[package]]
+name = "lcp"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "termion",
+ "unicode-segmentation",
+]
 
 [[package]]
 name = "libc"

@@ -1,5 +1,6 @@
+use crate::document::Separator;
 use crate::highlighting;
-use crate::highlighting::HighlightedText;
+use crate::highlighting::{HighlightedText, Token, Type};
 use crate::SearchDirection;
 use std::cmp;
 use termion::color;
@@ -7,14 +8,15 @@ use unicode_segmentation::UnicodeSegmentation;
 
 const HIGHLIGHTING_COLOR: color::LightWhite = color::LightWhite;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct Token {
-    start: usize,
-    len: usize,
+#[derive(Debug)]
+pub enum RowMode {
+    Token,
+    String,
 }
 
-#[derive(Default)]
+#[derive(Debug)]
 pub struct Row {
+    mode: RowMode,
     string: String,
     highlighting: Vec<highlighting::Type>,
     tokens: Vec<Token>,
@@ -22,12 +24,38 @@ pub struct Row {
     len: usize,
 }
 
-impl From<&str> for Row {
-    fn from(slice: &str) -> Self {
+impl Row {
+    pub(crate) fn new(slice: &str, separator: &Separator) -> Self {
+        let mut tokens = Vec::new();
+
+        let mut x = 0;
+        let mut is_tok = false;
+        let mut start = 0;
+        let mut len;
+
+        for c in slice.chars() {
+            if separator.is_char(c) {
+                if is_tok {
+                    len = x - start;
+                    tokens.push(Token { start, len })
+                }
+                is_tok = false;
+            } else {
+                if !is_tok {
+                    start = x
+                }
+                is_tok = true;
+            }
+            x += 1;
+        }
+        len = x - start;
+        tokens.push(Token { start, len });
+
         Self {
+            mode: RowMode::Token,
             string: String::from(slice),
             highlighting: Vec::new(),
-            tokens: vec![],
+            tokens,
             is_highlighted: false,
             len: slice.graphemes(true).count(),
         }
@@ -35,33 +63,76 @@ impl From<&str> for Row {
 }
 
 impl Row {
+    pub(crate) fn tokens(&self) -> &Vec<Token> {
+        &self.tokens
+    }
+
+    pub(crate) fn get_slice(&self, tok: &Token) -> &str {
+        &self.string[tok.start..tok.start + tok.len]
+    }
+
+    // pub(crate) fn render(&self, start: usize, end: usize) -> String {
+    //     let end = cmp::min(end, self.string.len());
+    //     let start = cmp::min(start, end);
+    //     let mut result = String::new();
+    //     let mut current_highlighting = &highlighting::Type::None;
+    //     #[allow(clippy::integer_arithmetic)]
+    //     for (index, grapheme) in self.string[..]
+    //         .graphemes(true)
+    //         .enumerate()
+    //         .skip(start)
+    //         .take(end - start)
+    //     {
+    //         if let Some(c) = grapheme.chars().next() {
+    //             let highlighting_type = self
+    //                 .highlighting
+    //                 .get(index)
+    //                 .unwrap_or(&highlighting::Type::None);
+    //             if highlighting_type != current_highlighting {
+    //                 current_highlighting = highlighting_type;
+    //                 let start_highlight = format!("{}", color::Bg(HIGHLIGHTING_COLOR));
+    //                 result.push_str(&start_highlight);
+    //             }
+    //             if c == '\t' {
+    //                 result.push(' ');
+    //             } else {
+    //                 result.push(c);
+    //             }
+    //         }
+    //     }
+    //     let end_highlight = format!("{}", color::Bg(color::Reset));
+    //     result.push_str(&end_highlight);
+    //     result
+    // }
+
     pub(crate) fn render(&self, start: usize, end: usize) -> String {
         let end = cmp::min(end, self.string.len());
         let start = cmp::min(start, end);
         let mut result = String::new();
         let mut current_highlighting = &highlighting::Type::None;
-        #[allow(clippy::integer_arithmetic)]
-        for (index, grapheme) in self.string[..]
-            .graphemes(true)
+        for (index, c) in self
+            .string
+            .chars()
             .enumerate()
             .skip(start)
             .take(end - start)
         {
-            if let Some(c) = grapheme.chars().next() {
-                let highlighting_type = self
-                    .highlighting
-                    .get(index)
-                    .unwrap_or(&highlighting::Type::None);
-                if highlighting_type != current_highlighting {
-                    current_highlighting = highlighting_type;
-                    let start_highlight = format!("{}", color::Bg(HIGHLIGHTING_COLOR));
-                    result.push_str(&start_highlight);
-                }
-                if c == '\t' {
-                    result.push(' ');
-                } else {
-                    result.push(c);
-                }
+            let highlighting_type = self
+                .highlighting
+                .get(index)
+                .unwrap_or(&highlighting::Type::None);
+            if highlighting_type != current_highlighting {
+                current_highlighting = highlighting_type;
+                let start_highlight = match highlighting_type {
+                    Type::None => format!("{}", color::Bg(color::Reset)),
+                    Type::Highlighted => format!("{}", color::Bg(HIGHLIGHTING_COLOR)),
+                };
+                result.push_str(&start_highlight);
+            }
+            if c == '\t' {
+                result.push(' ');
+            } else {
+                result.push(c);
             }
         }
         let end_highlight = format!("{}", color::Bg(color::Reset));
@@ -70,12 +141,10 @@ impl Row {
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.len
-    }
-
-    pub fn append(&mut self, new: &Self) {
-        self.string = format!("{}{}", self.string, new.string);
-        self.len += new.len;
+        match self.mode {
+            RowMode::Token => self.tokens.len() - 1,
+            RowMode::String => self.len,
+        }
     }
 
     pub(crate) fn find(&self, query: &str, at: usize, direction: SearchDirection) -> Option<usize> {
@@ -117,17 +186,16 @@ impl Row {
     }
 
     pub(crate) fn highlight(&mut self, text: &HighlightedText) {
-        self.highlighting = vec![highlighting::Type::None; self.len];
-        for i in text.left_position.x..text.right_position.x {
+        self.highlighting = vec![highlighting::Type::None; self.string.len()];
+        let end = text.token.start + text.token.len;
+        for i in text.token.start..end {
             self.highlighting[i] = highlighting::Type::Highlighted;
         }
-
-        self.is_highlighted = true;
     }
-}
 
-fn is_separator(c: char) -> bool {
-    c.is_ascii_punctuation() || c.is_ascii_whitespace()
+    pub(crate) fn unhighlight(&mut self) {
+        self.highlighting = vec![];
+    }
 }
 
 #[cfg(test)]
