@@ -1,4 +1,4 @@
-use crate::document::Separator;
+use crate::document::Tokenizer;
 use crate::highlighting::HighlightedText;
 use crate::Document;
 use crate::Row;
@@ -56,7 +56,7 @@ impl Editor {
         let initial_status = String::from(
             "HELP: f OR / = find | q OR esc = quit | ENTER will copy highlighted text to clipboard",
         );
-        let separator = Separator::Whitespace;
+        let separator = Tokenizer::Whitespace;
 
         let document = if let Some(file_name) = args.get(1) {
             let reader = BufReader::new(File::open(file_name)?);
@@ -67,6 +67,8 @@ impl Editor {
             Document::open(lines, separator)?
         };
 
+        let copied_text = document.get_text_at_pos(&Position::default());
+
         Ok(Self {
             should_quit: false,
             clipboard: Clipboard::new().expect("Failed to initialize clipboard"),
@@ -75,7 +77,7 @@ impl Editor {
             cursor_position: Position::default(),
             offset: Position::default(),
             status_message: initial_status,
-            copied_text: None,
+            copied_text,
         })
     }
 
@@ -86,7 +88,9 @@ impl Editor {
             self.terminal.clear_screen()?;
             match &self.copied_text {
                 None => self.terminal.writeln("Copied Nothing.")?,
-                Some(word) => self.terminal.writeln(&format!("Copied: {}", word.text))?,
+                Some(word) => self
+                    .terminal
+                    .writeln(&format!("Copied:\r\n\r\n{}", word.text))?,
             }
         } else {
             self.document

@@ -1,4 +1,4 @@
-use crate::document::Separator;
+use crate::document::Tokenizer;
 use crate::highlighting;
 use crate::highlighting::{HighlightedText, Token, Type};
 use crate::SearchDirection;
@@ -24,32 +24,37 @@ pub struct Row {
     len: usize,
 }
 
+fn mk_tok_and_update_start(slice: &str, tok_s: &str, start: usize) -> (Token, usize) {
+    let (divider, _) = slice[start..].split_once(tok_s).unwrap();
+    let div_len = divider.len();
+    let tok_len = tok_s.len();
+    let tok = Token {
+        start: start + div_len,
+        len: tok_len,
+    };
+    (tok, start + div_len + tok_len)
+}
+
 impl Row {
-    pub(crate) fn new(slice: &str, separator: &Separator) -> Self {
-        let mut tokens = Vec::new();
-
-        let mut x = 0;
-        let mut is_tok = false;
+    pub(crate) fn new(slice: &str, tokenizer: &Tokenizer) -> Self {
+        let mut tokens = vec![];
         let mut start = 0;
-        let mut len;
-
-        for c in slice.chars() {
-            if separator.is_char(c) {
-                if is_tok {
-                    len = x - start;
-                    tokens.push(Token { start, len })
+        match &tokenizer {
+            Tokenizer::Whitespace => {
+                for tok in slice.split_whitespace() {
+                    let (tok, new_start) = mk_tok_and_update_start(slice, tok, start);
+                    tokens.push(tok);
+                    start = new_start;
                 }
-                is_tok = false;
-            } else {
-                if !is_tok {
-                    start = x
-                }
-                is_tok = true;
             }
-            x += 1;
+            Tokenizer::String(s) => {
+                for tok in slice.split(s) {
+                    let (tok, new_start) = mk_tok_and_update_start(slice, tok, start);
+                    tokens.push(tok);
+                    start = new_start;
+                }
+            }
         }
-        len = x - start;
-        tokens.push(Token { start, len });
 
         Self {
             mode: RowMode::Token,

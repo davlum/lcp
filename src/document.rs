@@ -6,36 +6,28 @@ use crate::highlighting::HighlightedText;
 use std::io::BufRead;
 
 #[derive(Clone, Debug)]
-pub enum Separator {
+pub enum Tokenizer {
     Whitespace,
-    Other(char),
+    String(String),
 }
 
-impl Separator {
-    pub(crate) fn is_char(&self, c: char) -> bool {
-        match self {
-            Separator::Whitespace => c.is_whitespace() || c.is_control(),
-            Separator::Other(sep) => c == *sep,
-        }
-    }
-}
-
-#[derive(Default)]
+#[derive(Debug)]
 pub struct Document {
     rows: Vec<Row>,
 }
 
 impl Document {
-    pub(crate) fn open(input: impl BufRead, separator: Separator) -> Result<Self, std::io::Error> {
+    pub(crate) fn open(input: impl BufRead, tokenizer: Tokenizer) -> Result<Self, std::io::Error> {
         let mut rows = Vec::new();
         for value in input.lines() {
-            rows.push(Row::new(value?.as_str(), &separator));
+            rows.push(Row::new(value?.as_str(), &tokenizer));
         }
         Ok(Self { rows })
     }
     pub(crate) fn row(&self, index: usize) -> Option<&Row> {
         self.rows.get(index)
     }
+
     pub(crate) fn is_empty(&self) -> bool {
         self.rows.is_empty()
     }
