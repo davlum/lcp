@@ -8,13 +8,13 @@ use unicode_segmentation::UnicodeSegmentation;
 
 const HIGHLIGHTING_COLOR: color::LightWhite = color::LightWhite;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum RowMode {
     Token,
     String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Row {
     mode: RowMode,
     string: String,
@@ -199,14 +199,5 @@ impl Row {
 }
 
 #[cfg(test)]
-mod test_super {
-    use super::*;
-
-    #[test]
-    fn test_find() {
-        let row = Row::from("1testtest");
-        assert_eq!(row.find("t", 0, SearchDirection::Forward), Some(1));
-        assert_eq!(row.find("t", 2, SearchDirection::Forward), Some(4));
-        assert_eq!(row.find("t", 5, SearchDirection::Forward), Some(5));
-    }
-}
+#[path = "tests/test_row.rs"]
+mod tests;

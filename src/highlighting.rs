@@ -26,7 +26,7 @@ impl HighlightedText {
     }
 }
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Type {
     None,
     Highlighted,

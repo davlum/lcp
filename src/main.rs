@@ -3,6 +3,7 @@ mod editor;
 mod highlighting;
 mod row;
 mod terminal;
+
 mod tokenizer;
 
 pub use document::Document;
