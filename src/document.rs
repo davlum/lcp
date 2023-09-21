@@ -55,16 +55,11 @@ impl Document {
         }
         let mut position = Position { x: at.x, y: at.y };
 
-        let start = if direction == SearchDirection::Forward {
-            at.y
-        } else {
-            0
+        let (start, end) = match direction {
+            SearchDirection::Forward => (at.y, self.rows.len()),
+            SearchDirection::Backward => (0, at.y.saturating_add(1)),
         };
-        let end = if direction == SearchDirection::Forward {
-            self.rows.len()
-        } else {
-            at.y.saturating_add(1)
-        };
+
         for _ in start..end {
             if let Some(row) = self.rows.get(position.y) {
                 if let Some(x) = row.find(query, position.x, direction) {

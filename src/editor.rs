@@ -97,6 +97,7 @@ impl Editor {
                     .writeln(&format!("Error when copying to clipboard:\r\n\r\n{}", e))?,
             }
         } else {
+            self.update_highlighted_text();
             self.document.highlight(&self.highlighted_text);
             self.draw_rows()?;
             self.draw_status_bar()?;
@@ -321,7 +322,8 @@ impl Editor {
     {
         let mut result = String::new();
         loop {
-            self.status_message = format!("{prompt}{result}");
+            let highlighted_text = &self.highlighted_text;
+            self.status_message = format!("{prompt}{result} {:?}", highlighted_text);
             self.refresh_screen()?;
             let key = self.terminal.read_key()?;
             match key {
