@@ -1,27 +1,25 @@
 use crate::document::Tokenizer;
-use crate::highlighting;
-use crate::highlighting::{HighlightedText, Token, Type};
-use crate::SearchDirection;
+use crate::highlighting::{HighlightedText, TextMode};
+use crate::{highlighting, SearchDirection};
 use std::cmp;
 use termion::color;
 use unicode_segmentation::UnicodeSegmentation;
 
 const HIGHLIGHTING_COLOR: color::LightWhite = color::LightWhite;
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum RowMode {
-    Token,
-    String,
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct Token {
+    pub(crate) start: usize,
+    pub(crate) len: usize,
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Row {
-    mode: RowMode,
-    string: String,
+    pub(crate) string: String,
     highlighting: Vec<highlighting::Type>,
     tokens: Vec<Token>,
     pub is_highlighted: bool,
-    len: usize,
+    pub(crate) len: usize,
 }
 
 fn mk_tok_and_update_start(slice: &str, tok_s: &str, start: usize) -> (Token, usize) {
@@ -57,7 +55,6 @@ impl Row {
         }
 
         Self {
-            mode: RowMode::Token,
             string: String::from(slice),
             highlighting: Vec::new(),
             tokens,
@@ -68,12 +65,10 @@ impl Row {
 }
 
 impl Row {
-    pub(crate) fn tokens(&self) -> &Vec<Token> {
-        &self.tokens
-    }
-
-    pub(crate) fn get_slice(&self, tok: &Token) -> &str {
-        &self.string[tok.start..tok.start + tok.len]
+    pub(crate) fn token(&self, index: usize) -> &Token {
+        self.tokens
+            .get(index)
+            .unwrap_or_else(|| panic!("Should be a token at: {index}"))
     }
 
     // pub(crate) fn render(&self, start: usize, end: usize) -> String {
@@ -129,8 +124,8 @@ impl Row {
             if highlighting_type != current_highlighting {
                 current_highlighting = highlighting_type;
                 let start_highlight = match highlighting_type {
-                    Type::None => format!("{}", color::Bg(color::Reset)),
-                    Type::Highlighted => format!("{}", color::Bg(HIGHLIGHTING_COLOR)),
+                    highlighting::Type::None => format!("{}", color::Bg(color::Reset)),
+                    highlighting::Type::Highlighted => format!("{}", color::Bg(HIGHLIGHTING_COLOR)),
                 };
                 result.push_str(&start_highlight);
             }
@@ -145,10 +140,10 @@ impl Row {
         result
     }
 
-    pub(crate) fn len(&self) -> usize {
-        match self.mode {
-            RowMode::Token => self.tokens.len() - 1,
-            RowMode::String => self.len,
+    pub(crate) fn len(&self, text_mode: TextMode) -> usize {
+        match text_mode {
+            TextMode::Token => self.tokens.len() - 1,
+            TextMode::Cursor(_) => self.len,
         }
     }
 
@@ -192,9 +187,21 @@ impl Row {
 
     pub(crate) fn highlight(&mut self, text: &HighlightedText) {
         self.highlighting = vec![highlighting::Type::None; self.string.len()];
-        let end = text.token.start + text.token.len;
-        for i in text.token.start..end {
-            self.highlighting[i] = highlighting::Type::Highlighted;
+        match text.mode {
+            TextMode::Token => {
+                let tok = self
+                    .tokens
+                    .get(text.position.x)
+                    .expect("Token should be here");
+                for i in tok.start..tok.start + tok.len {
+                    self.highlighting[i] = highlighting::Type::Highlighted;
+                }
+            }
+            TextMode::Cursor(start_pos) => {
+                for i in start_pos.x..text.position.x {
+                    self.highlighting[i] = highlighting::Type::Highlighted;
+                }
+            }
         }
     }
 

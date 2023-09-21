@@ -1,17 +1,19 @@
+use std::fs::File;
+use std::io::BufReader;
+
+use arboard::Clipboard;
+use termion::color;
+use termion::event::Key;
+
 use crate::document::Tokenizer;
 use crate::highlighting::HighlightedText;
 use crate::Document;
 use crate::Row;
 use crate::Terminal;
-use arboard::Clipboard;
-use std::fs::File;
-use std::io::BufReader;
-use termion::color;
-use termion::event::Key;
 
 const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
 const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+// const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum SearchDirection {
@@ -19,10 +21,16 @@ pub enum SearchDirection {
     Backward,
 }
 
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Position {
     pub x: usize,
     pub y: usize,
+}
+
+enum CopyStatus {
+    Success(String),
+    Error(String),
+    Noop,
 }
 
 pub struct Editor {
@@ -33,11 +41,13 @@ pub struct Editor {
     offset: Position,
     document: Document,
     status_message: String,
-    copied_text: Option<HighlightedText>,
+    highlighted_text: HighlightedText,
+    copy_status: CopyStatus,
 }
 
 impl Editor {
     pub fn run(&mut self) -> std::io::Result<()> {
+        self.terminal.cursor_hide()?;
         loop {
             if let Err(error) = self.refresh_screen() {
                 self.die(error)?;
@@ -45,7 +55,8 @@ impl Editor {
             if self.should_quit {
                 break;
             }
-            if let Err(error) = self.process_keypress() {
+            let pressed_key = self.terminal.read_key()?;
+            if let Err(error) = self.process_keypress(pressed_key) {
                 self.die(error)?;
             }
         }
@@ -53,9 +64,8 @@ impl Editor {
     }
     pub fn default() -> Result<Self, std::io::Error> {
         let args: Vec<String> = std::env::args().collect();
-        let initial_status = String::from(
-            "HELP: f OR / = find | q OR esc = quit | ENTER will copy highlighted text to clipboard",
-        );
+        let initial_status =
+            String::from("HELP: / = find | esc = quit | ENTER = copy highlighted text");
         let separator = Tokenizer::Whitespace;
 
         let document = if let Some(file_name) = args.get(1) {
@@ -67,7 +77,11 @@ impl Editor {
             Document::open(lines, separator)?
         };
 
-        let copied_text = document.get_text_at_pos(&Position::default());
+        if document.is_empty() {
+            panic!("You must construct additional pylons")
+        }
+
+        let highlighted_text = HighlightedText::new_token(Position::default(), &document);
 
         Ok(Self {
             should_quit: false,
@@ -77,24 +91,26 @@ impl Editor {
             cursor_position: Position::default(),
             offset: Position::default(),
             status_message: initial_status,
-            copied_text,
+            highlighted_text,
+            copy_status: CopyStatus::Noop,
         })
     }
 
     fn refresh_screen(&mut self) -> Result<(), std::io::Error> {
-        self.terminal.cursor_hide()?;
         self.terminal.cursor_position(&Position::default())?;
         if self.should_quit {
             self.terminal.clear_screen()?;
-            match &self.copied_text {
-                None => self.terminal.writeln("Copied Nothing.")?,
-                Some(word) => self
+            match &self.copy_status {
+                CopyStatus::Noop => self.terminal.writeln("Copied Nothing.")?,
+                CopyStatus::Success(s) => {
+                    self.terminal.writeln(&format!("Copied:\r\n\r\n{}", s))?
+                }
+                CopyStatus::Error(e) => self
                     .terminal
-                    .writeln(&format!("Copied:\r\n\r\n{}", word.text))?,
+                    .writeln(&format!("Error when copying to clipboard:\r\n\r\n{}", e))?,
             }
         } else {
-            self.document
-                .highlight(&self.cursor_position, &self.copied_text);
+            self.document.highlight(&self.highlighted_text);
             self.draw_rows()?;
             self.draw_status_bar()?;
             self.draw_message_bar()?;
@@ -103,7 +119,6 @@ impl Editor {
                 y: self.cursor_position.y.saturating_sub(self.offset.y),
             })?;
         }
-        // self.terminal.cursor_show()?;
         self.terminal.flush()
     }
 
@@ -134,8 +149,6 @@ impl Editor {
                     } else if moved {
                         editor.move_cursor(Key::Left);
                     }
-                    let text = HighlightedText::from_word(query, editor.cursor_position);
-                    editor.copied_text = Some(text);
                 },
             )
             .unwrap_or(None);
@@ -144,21 +157,26 @@ impl Editor {
             self.cursor_position = old_position;
             self.scroll();
         }
-        self.copied_text = None;
     }
-    fn process_keypress(&mut self) -> Result<(), std::io::Error> {
-        let pressed_key = self.terminal.read_key()?;
+    fn process_keypress(&mut self, pressed_key: Key) -> Result<(), std::io::Error> {
         match pressed_key {
-            Key::Ctrl('q' | 'c') | Key::Char('q') | Key::Esc => {
-                self.copied_text = None;
+            Key::Esc => {
+                self.copy_status = CopyStatus::Noop;
                 self.should_quit = true;
             }
-            Key::Ctrl('f' | 's') | Key::Char('/') => self.search(),
+            Key::Char('/') => {
+                self.highlighted_text =
+                    HighlightedText::new_cursor(self.cursor_position, &self.document);
+                self.refresh_screen()?;
+                self.search();
+                self.highlighted_text =
+                    HighlightedText::new_token(self.cursor_position, &self.document);
+            }
             Key::Char('\r') | Key::Char('\n') => {
-                if let Some(copied_word) = &self.copied_text {
-                    self.clipboard
-                        .set_text(copied_word.text.to_string())
-                        .expect("Could not copy to clipboard");
+                let s = self.highlighted_text.text.to_string();
+                match self.clipboard.set_text(s.clone()) {
+                    Ok(_) => self.copy_status = CopyStatus::Success(s),
+                    Err(e) => self.copy_status = CopyStatus::Error(e.to_string()),
                 }
                 self.should_quit = true;
             }
@@ -169,7 +187,8 @@ impl Editor {
             | Key::PageUp
             | Key::PageDown
             | Key::End
-            | Key::Home => self.move_cursor(pressed_key),
+            | Key::Home
+            | Key::Char('$' | '^') => self.move_cursor(pressed_key),
             _ => (),
         }
         self.scroll();
@@ -195,12 +214,15 @@ impl Editor {
         let terminal_height = self.terminal.size().height as usize;
         let Position { mut y, mut x } = self.cursor_position;
         let height = self.document.len() - 1;
-        let mut width = if let Some(row) = self.document.row(y) {
-            row.len()
-        } else {
-            0
-        };
+        let row = self.document.row(y);
+        let mut width = row.len(self.highlighted_text.mode);
         match key {
+            Key::Char('$') => {
+                x = width;
+            }
+            Key::Char('^') => {
+                x = 0;
+            }
             Key::Up => {
                 if y == 0 {
                     y = height;
@@ -247,29 +269,17 @@ impl Editor {
             Key::End => x = width,
             _ => (),
         }
-        width = if let Some(row) = self.document.row(y) {
-            row.len()
-        } else {
-            0
-        };
+        let row = self.document.row(y);
+        width = row.len(self.highlighted_text.mode);
+
         if x > width {
             x = width;
         }
 
         self.cursor_position = Position { x, y };
-        self.copied_text = self.document.get_text_at_pos(&self.cursor_position);
+        self.update_highlighted_text();
     }
-    fn draw_welcome_message(&self) -> std::io::Result<()> {
-        let mut welcome_message = format!("Hecto editor -- version {VERSION}");
-        let width = self.terminal.size().width as usize;
-        let len = welcome_message.len();
-        #[allow(clippy::integer_arithmetic, clippy::integer_division)]
-        let padding = width.saturating_sub(len) / 2;
-        let spaces = " ".repeat(padding.saturating_sub(1));
-        welcome_message = format!("~{spaces}{welcome_message}");
-        welcome_message.truncate(width);
-        self.terminal.writeln(&welcome_message)
-    }
+
     pub fn draw_row(&self, row: &Row) -> std::io::Result<()> {
         let width = self.terminal.size().width as usize;
         let start = self.offset.x;
@@ -277,18 +287,17 @@ impl Editor {
         let row = row.render(start, end);
         self.terminal.writeln(&row)
     }
-    #[allow(clippy::integer_division, clippy::integer_arithmetic)]
+
     fn draw_rows(&self) -> std::io::Result<()> {
         let height = self.terminal.size().height;
+        let doc_len = self.document.len() as u16;
         for terminal_row in 0..height {
             self.terminal.clear_current_line()?;
-            if let Some(row) = self
-                .document
-                .row(self.offset.y.saturating_add(terminal_row as usize))
-            {
+            if terminal_row < doc_len {
+                let row = self
+                    .document
+                    .row(self.offset.y.saturating_add(terminal_row as usize));
                 self.draw_row(row)?;
-            } else if self.document.is_empty() && terminal_row == height / 3 {
-                self.draw_welcome_message()?;
             } else {
                 self.terminal.writeln("~")?;
             }
@@ -351,6 +360,11 @@ impl Editor {
             return Ok(None);
         }
         Ok(Some(result))
+    }
+
+    pub(crate) fn update_highlighted_text(&mut self) {
+        self.highlighted_text
+            .update_position(self.cursor_position, &self.document)
     }
 
     fn die(&self, e: std::io::Error) -> std::io::Result<()> {

@@ -35,7 +35,6 @@ impl Terminal {
         write!(&self.tty, "{}", termion::clear::All)
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     pub(crate) fn cursor_position(&self, position: &Position) -> std::io::Result<()> {
         let Position { mut x, mut y } = position;
         x = x.saturating_add(1);
@@ -63,6 +62,7 @@ impl Terminal {
     pub(crate) fn cursor_hide(&self) -> std::io::Result<()> {
         write!(&self.tty, "{}", termion::cursor::Hide)
     }
+
     // pub(crate) fn cursor_show(&self) -> std::io::Result<()> {
     //     write!(&self.tty, "{}", termion::cursor::Show)
     // }
