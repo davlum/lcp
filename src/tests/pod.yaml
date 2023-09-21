@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+    gatekeeper.sh/mutations: AssignMetadata//cluster-name-tag-datadog-agent:1, ModifySet//allow-scheduling-on-meta-node-pools:1
+    prometheus.io/path: /metrics
+    prometheus.io/port: "9200"
+    prometheus.io/scrape: "true"
+  creationTimestamp: "2023-09-18T21:16:04Z"
+status:
+  conditions:
+  - lastProbeTime: null
+    lastTransitionTime: null
+    reason: LoadBalancerNegWithoutHealthCheck
+    status: "True"
+    type: cloud.google.com/load-balancer-neg-ready
+  - lastProbeTime: null
+    lastTransitionTime: "2023-09-18T21:16:04Z"
+    status: "True"
+    type: Initialized
+  - lastProbeTime: null
+    lastTransitionTime: "2023-09-18T21:16:11Z"
+    status: "True"
+    type: Ready
+  - lastProbeTime: null
+    lastTransitionTime: "2023-09-18T21:16:08Z"
+    status: "True"
+    type: ContainersReady
+  - lastProbeTime: null
+    lastTransitionTime: "2023-09-18T21:16:04Z"
+    status: "True"
+    type: PodScheduled
+  containerStatuses:
+  - lastState: {}
+    name: logdb-shared
+    ready: true
+    restartCount: 0
+    started: true
+    state:
+      running:
+        startedAt: "2023-09-18T21:16:08Z"
+  hostIP: 10.2.0.142
+  phase: Running
+  podIP: 10.12.25.98
+  podIPs:
+  - ip: 10.12.25.98
+  qosClass: Guaranteed
+  startTime: "2023-09-18T21:16:04Z"

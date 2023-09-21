@@ -81,6 +81,9 @@ impl Editor {
     }
 
     fn refresh_screen(&mut self) -> Result<(), std::io::Error> {
+        // Cursors will move whether they are hidden or not.
+        // They need to be reset on each loop or the position will affect
+        // where we start outputting on the tty.
         self.terminal.cursor_position(&Position::default())?;
         if self.should_quit {
             self.terminal.clear_screen()?;
