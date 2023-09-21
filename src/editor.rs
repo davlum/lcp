@@ -4,7 +4,6 @@ use termion::event::Key;
 
 use crate::highlighting::HighlightedText;
 use crate::Document;
-use crate::Row;
 use crate::Terminal;
 
 const HELP_STRING: &str = "HELP: / = find | esc = quit | ENTER = copy highlighted text";
@@ -61,13 +60,17 @@ impl Editor {
         }
         Ok(())
     }
-    pub fn new(document: Document, clipboard: Option<Clipboard>) -> Result<Self, std::io::Error> {
+    pub fn new(
+        document: Document,
+        clipboard: Option<Clipboard>,
+        terminal: Terminal,
+    ) -> Result<Self, std::io::Error> {
         let highlighted_text = HighlightedText::new_token(Position::default(), &document);
 
         Ok(Self {
             should_quit: false,
             clipboard,
-            terminal: Terminal::default().expect("Failed to initialize terminal"),
+            terminal,
             document,
             cursor_position: Position::default(),
             offset: Position::default(),
@@ -95,10 +98,6 @@ impl Editor {
             self.draw_rows()?;
             self.draw_status_bar()?;
             self.draw_message_bar()?;
-            self.terminal.cursor_position(&Position {
-                x: self.cursor_position.x.saturating_sub(self.offset.x),
-                y: self.cursor_position.y.saturating_sub(self.offset.y),
-            })?;
         }
         self.terminal.flush()
     }
@@ -265,7 +264,8 @@ impl Editor {
         self.update_highlighted_text();
     }
 
-    pub fn draw_row(&self, row: &Row) -> std::io::Result<()> {
+    pub fn draw_row(&mut self, index: usize) -> std::io::Result<()> {
+        let row = self.document.row(index);
         let width = self.terminal.size().width as usize;
         let start = self.offset.x;
         let end = self.offset.x.saturating_add(width);
@@ -273,23 +273,20 @@ impl Editor {
         self.terminal.writeln(&row)
     }
 
-    fn draw_rows(&self) -> std::io::Result<()> {
+    fn draw_rows(&mut self) -> std::io::Result<()> {
         let height = self.terminal.size().height;
         let doc_len = self.document.len() as u16;
         for terminal_row in 0..height {
             self.terminal.clear_current_line()?;
             if terminal_row < doc_len {
-                let row = self
-                    .document
-                    .row(self.offset.y.saturating_add(terminal_row as usize));
-                self.draw_row(row)?;
+                self.draw_row(self.offset.y.saturating_add(terminal_row as usize))?;
             } else {
                 self.terminal.writeln("~")?;
             }
         }
         Ok(())
     }
-    fn draw_status_bar(&self) -> std::io::Result<()> {
+    fn draw_status_bar(&mut self) -> std::io::Result<()> {
         let width = self.terminal.size().width as usize;
 
         let mut line_indicator = format!(
@@ -308,7 +305,7 @@ impl Editor {
         self.terminal.reset_bg_color()
     }
 
-    fn draw_message_bar(&self) -> std::io::Result<()> {
+    fn draw_message_bar(&mut self) -> std::io::Result<()> {
         self.terminal.clear_current_line()?;
         let mut message = self.status_message.clone();
         message.truncate(self.terminal.size().width as usize);
@@ -352,7 +349,7 @@ impl Editor {
             .update_position(self.cursor_position, &self.document)
     }
 
-    fn die(&self, e: std::io::Error) -> std::io::Result<()> {
+    fn die(&mut self, e: std::io::Error) -> std::io::Result<()> {
         self.terminal.clear_screen()?;
         panic!("{e}");
     }

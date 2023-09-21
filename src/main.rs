@@ -35,7 +35,9 @@ fn main() -> std::io::Result<()> {
 
     let clipboard = Clipboard::new().expect("Failed to initialize clipboard");
 
-    match Editor::new(document, Some(clipboard))
+    let terminal = Terminal::new(None).expect("Failed to initialize terminal");
+
+    match Editor::new(document, Some(clipboard), terminal)
         .expect("Failed to read input.")
         .run()
     {

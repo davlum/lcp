@@ -32,7 +32,8 @@ impl<'a> Read for StringReader<'a> {
 fn test_exit() {
     let buf = BufReader::new(StringReader::new(include_str!("k-get-po.txt")));
     let document = Document::new(buf).unwrap();
-    let mut editor = Editor::new(document, None).unwrap();
+    let terminal = Terminal::new(Some((150, 150))).unwrap();
+    let mut editor = Editor::new(document, None, terminal).unwrap();
     let key = Key::Esc;
     assert!(!editor.should_quit);
     editor.process_keypress(key).unwrap();
@@ -44,7 +45,8 @@ fn test_exit() {
 fn test_default_pos_copy() {
     let buf = BufReader::new(StringReader::new(include_str!("k-get-po.txt")));
     let document = Document::new(buf).unwrap();
-    let mut editor = Editor::new(document, None).unwrap();
+    let terminal = Terminal::new(Some((150, 150))).unwrap();
+    let mut editor = Editor::new(document, None, terminal).unwrap();
     let key = Key::Char('\n');
     assert!(!editor.should_quit);
     editor.process_keypress(key).unwrap();
