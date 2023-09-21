@@ -17,7 +17,8 @@ pub struct Document {
 }
 
 impl Document {
-    pub(crate) fn open(input: impl BufRead, tokenizer: Tokenizer) -> Result<Self, std::io::Error> {
+    pub(crate) fn new(input: impl BufRead) -> Result<Self, std::io::Error> {
+        let tokenizer = Tokenizer::Whitespace;
         let mut rows = Vec::new();
         for value in input.lines() {
             rows.push(Row::new(value?.as_str(), &tokenizer));

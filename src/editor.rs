@@ -1,15 +1,13 @@
-use std::fs::File;
-use std::io::BufReader;
-
 use arboard::Clipboard;
 use termion::color;
 use termion::event::Key;
 
-use crate::document::Tokenizer;
 use crate::highlighting::HighlightedText;
 use crate::Document;
 use crate::Row;
 use crate::Terminal;
+
+const HELP_STRING: &str = "HELP: / = find | esc = quit | ENTER = copy highlighted text";
 
 const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
 const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
@@ -27,6 +25,7 @@ pub struct Position {
     pub y: usize,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum CopyStatus {
     Success(String),
     Error(String),
@@ -35,7 +34,7 @@ enum CopyStatus {
 
 pub struct Editor {
     should_quit: bool,
-    clipboard: Clipboard,
+    clipboard: Option<Clipboard>,
     terminal: Terminal,
     cursor_position: Position,
     offset: Position,
@@ -62,35 +61,17 @@ impl Editor {
         }
         Ok(())
     }
-    pub fn default() -> Result<Self, std::io::Error> {
-        let args: Vec<String> = std::env::args().collect();
-        let initial_status =
-            String::from("HELP: / = find | esc = quit | ENTER = copy highlighted text");
-        let separator = Tokenizer::Whitespace;
-
-        let document = if let Some(file_name) = args.get(1) {
-            let reader = BufReader::new(File::open(file_name)?);
-            Document::open(reader, separator)?
-        } else {
-            let stdin = std::io::stdin();
-            let lines = BufReader::new(stdin.lock());
-            Document::open(lines, separator)?
-        };
-
-        if document.is_empty() {
-            panic!("You must construct additional pylons")
-        }
-
+    pub fn new(document: Document, clipboard: Option<Clipboard>) -> Result<Self, std::io::Error> {
         let highlighted_text = HighlightedText::new_token(Position::default(), &document);
 
         Ok(Self {
             should_quit: false,
-            clipboard: Clipboard::new().expect("Failed to initialize clipboard"),
+            clipboard,
             terminal: Terminal::default().expect("Failed to initialize terminal"),
             document,
             cursor_position: Position::default(),
             offset: Position::default(),
-            status_message: initial_status,
+            status_message: HELP_STRING.to_string(),
             highlighted_text,
             copy_status: CopyStatus::Noop,
         })
@@ -174,10 +155,14 @@ impl Editor {
             }
             Key::Char('\r') | Key::Char('\n') => {
                 let s = self.highlighted_text.text.to_string();
-                match self.clipboard.set_text(s.clone()) {
-                    Ok(_) => self.copy_status = CopyStatus::Success(s),
-                    Err(e) => self.copy_status = CopyStatus::Error(e.to_string()),
+                match self.clipboard.as_mut() {
+                    None => self.copy_status = CopyStatus::Success(s),
+                    Some(clipboard) => match clipboard.set_text(s.clone()) {
+                        Ok(_) => self.copy_status = CopyStatus::Success(s),
+                        Err(e) => self.copy_status = CopyStatus::Error(e.to_string()),
+                    },
                 }
+
                 self.should_quit = true;
             }
             Key::Up
@@ -372,3 +357,7 @@ impl Editor {
         panic!("{e}");
     }
 }
+
+#[cfg(test)]
+#[path = "tests/test_editor.rs"]
+mod tests;
