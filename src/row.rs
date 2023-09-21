@@ -17,7 +17,7 @@ pub struct Token {
 pub struct Row {
     pub(crate) string: String,
     highlighting: Vec<highlighting::Type>,
-    tokens: Vec<Token>,
+    pub(crate) tokens: Vec<Token>,
     pub is_highlighted: bool,
     pub(crate) len: usize,
 }
@@ -33,31 +33,34 @@ fn mk_tok_and_update_start(slice: &str, tok_s: &str, start: usize) -> (Token, us
     (tok, start + div_len + tok_len)
 }
 
-impl Row {
-    pub(crate) fn new(slice: &str, tokenizer: &Tokenizer) -> Self {
-        let mut tokens = vec![];
-        let mut start = 0;
-        match &tokenizer {
-            Tokenizer::Whitespace => {
-                for tok in slice.split_whitespace() {
-                    let (tok, new_start) = mk_tok_and_update_start(slice, tok, start);
-                    tokens.push(tok);
-                    start = new_start;
-                }
-            }
-            Tokenizer::String(s) => {
-                for tok in slice.split(s) {
-                    let (tok, new_start) = mk_tok_and_update_start(slice, tok, start);
-                    tokens.push(tok);
-                    start = new_start;
-                }
+pub(crate) fn mk_tokens(slice: &str, tokenizer: &Tokenizer) -> Vec<Token> {
+    let mut tokens = vec![];
+    let mut start = 0;
+    match &tokenizer {
+        Tokenizer::Whitespace => {
+            for tok in slice.split_whitespace() {
+                let (tok, new_start) = mk_tok_and_update_start(slice, tok, start);
+                tokens.push(tok);
+                start = new_start;
             }
         }
+        Tokenizer::String(s) => {
+            for tok in slice.split(s) {
+                let (tok, new_start) = mk_tok_and_update_start(slice, tok, start);
+                tokens.push(tok);
+                start = new_start;
+            }
+        }
+    }
+    tokens
+}
 
+impl Row {
+    pub(crate) fn new(slice: &str, tokenizer: &Tokenizer) -> Self {
         Self {
             string: String::from(slice),
             highlighting: Vec::new(),
-            tokens,
+            tokens: mk_tokens(slice, tokenizer),
             is_highlighted: false,
             len: slice.graphemes(true).count(),
         }

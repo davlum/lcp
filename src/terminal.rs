@@ -58,7 +58,7 @@ impl Terminal {
     }
 
     pub(crate) fn flush(&mut self) -> Result<(), std::io::Error> {
-        if let Some(_) = self.tty.as_mut() {
+        if self.tty.is_some() {
             std::io::stdout().flush()?;
         }
         Ok(())
@@ -102,6 +102,13 @@ impl Terminal {
     pub(crate) fn cursor_hide(&mut self) -> std::io::Result<()> {
         if let Some(tty) = self.tty.as_mut() {
             write!(tty, "{}", termion::cursor::Hide)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn cursor_show(&mut self) -> std::io::Result<()> {
+        if let Some(tty) = self.tty.as_mut() {
+            write!(tty, "{}", termion::cursor::Show)?;
         }
         Ok(())
     }

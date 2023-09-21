@@ -2,17 +2,23 @@ use arboard::Clipboard;
 use termion::color;
 use termion::event::Key;
 
+use crate::document::Tokenizer;
 use crate::highlighting::HighlightedText;
 use crate::Document;
 use crate::Terminal;
 
-const HELP_STRING: &str = "HELP: / = find | esc = quit | ENTER = copy highlighted text";
+const HELP_STRING: &str =
+    "HELP: esc = quit | ENTER = copy | / = find | t = change tokenizer | w = whitespace (default) | v = visual mode";
+
+const TOKENIZER_STRING: &str = "Change the tokenizer (default is whitespace): ";
+
+const SEARCH_STRING: &str = "Search (ESC to cancel, Arrows to navigate): ";
 
 const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
 const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
 // const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum SearchDirection {
     Forward,
     Backward,
@@ -31,8 +37,21 @@ enum CopyStatus {
     Noop,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum InputMode {
+    Normal,
+    Tokenizer,
+    Search(SearchDirection),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ShouldQuit {
+    No,
+    Ye(CopyStatus),
+}
+
 pub struct Editor {
-    should_quit: bool,
+    should_quit: ShouldQuit,
     clipboard: Option<Clipboard>,
     terminal: Terminal,
     cursor_position: Position,
@@ -40,7 +59,8 @@ pub struct Editor {
     document: Document,
     status_message: String,
     highlighted_text: HighlightedText,
-    copy_status: CopyStatus,
+    input_mode: InputMode,
+    prompt_input: String,
 }
 
 impl Editor {
@@ -50,7 +70,7 @@ impl Editor {
             if let Err(error) = self.refresh_screen() {
                 self.die(error)?;
             }
-            if self.should_quit {
+            if let ShouldQuit::Ye(_) = &self.should_quit {
                 break;
             }
             let pressed_key = self.terminal.read_key()?;
@@ -58,6 +78,7 @@ impl Editor {
                 self.die(error)?;
             }
         }
+        self.terminal.cursor_show()?;
         Ok(())
     }
     pub fn new(
@@ -68,7 +89,7 @@ impl Editor {
         let highlighted_text = HighlightedText::new_token(Position::default(), &document);
 
         Ok(Self {
-            should_quit: false,
+            should_quit: ShouldQuit::No,
             clipboard,
             terminal,
             document,
@@ -76,7 +97,8 @@ impl Editor {
             offset: Position::default(),
             status_message: HELP_STRING.to_string(),
             highlighted_text,
-            copy_status: CopyStatus::Noop,
+            input_mode: InputMode::Normal,
+            prompt_input: "".to_string(),
         })
     }
 
@@ -85,9 +107,9 @@ impl Editor {
         // They need to be reset on each loop or the position will affect
         // where we start outputting on the tty.
         self.terminal.cursor_position(&Position::default())?;
-        if self.should_quit {
+        if let ShouldQuit::Ye(copy_status) = &self.should_quit {
             self.terminal.clear_screen()?;
-            match &self.copy_status {
+            match copy_status {
                 CopyStatus::Noop => self.terminal.writeln("Copied Nothing.")?,
                 CopyStatus::Success(s) => {
                     self.terminal.writeln(&format!("Copied:\r\n\r\n{}", s))?
@@ -97,7 +119,6 @@ impl Editor {
                     .writeln(&format!("Error when copying to clipboard:\r\n\r\n{}", e))?,
             }
         } else {
-            self.update_highlighted_text();
             self.document.highlight(&self.highlighted_text);
             self.draw_rows()?;
             self.draw_status_bar()?;
@@ -106,68 +127,123 @@ impl Editor {
         self.terminal.flush()
     }
 
-    fn search(&mut self) {
-        let old_position = self.cursor_position;
-        let mut direction = SearchDirection::Forward;
-        let query = self
-            .prompt(
-                "Search (ESC to cancel, Arrows to navigate): ",
-                |editor, key, query| {
-                    let mut moved = false;
-                    match key {
-                        Key::Right | Key::Down => {
-                            direction = SearchDirection::Forward;
-                            editor.move_cursor(Key::Right);
-                            moved = true;
-                        }
-                        Key::Left | Key::Up => direction = SearchDirection::Backward,
-                        _ => direction = SearchDirection::Forward,
-                    }
-                    if let Some(position) =
-                        editor
-                            .document
-                            .find(query, &editor.cursor_position, direction)
-                    {
-                        editor.cursor_position = position;
-                        editor.scroll();
-                    } else if moved {
-                        editor.move_cursor(Key::Left);
-                    }
-                },
-            )
-            .unwrap_or(None);
+    fn normal_mode(&mut self) {
+        self.input_mode = InputMode::Normal;
+        self.highlighted_text = HighlightedText::new_token(self.cursor_position, &self.document);
+        self.status_message = HELP_STRING.to_string();
+    }
 
-        if query.is_none() {
-            self.cursor_position = old_position;
-            self.scroll();
+    fn token_mode(&mut self) {
+        self.input_mode = InputMode::Tokenizer;
+        self.prompt_input = "".to_string();
+        self.status_message = TOKENIZER_STRING.to_string();
+    }
+
+    fn search_mode(&mut self) {
+        self.input_mode = InputMode::Search(SearchDirection::Forward);
+        self.prompt_input = "".to_string();
+        self.highlighted_text = HighlightedText::new_cursor(self.cursor_position, &self.document);
+        self.status_message = SEARCH_STRING.to_string();
+    }
+
+    fn process_keypress_tokenizer(&mut self, pressed_key: Key) {
+        match pressed_key {
+            Key::Backspace => {
+                self.prompt_input
+                    .truncate(self.prompt_input.len().saturating_sub(1));
+                self.status_message = format!("{}{}", TOKENIZER_STRING, self.prompt_input)
+            }
+            Key::Char('\n') => {
+                self.document
+                    .update_tokenizer(Tokenizer::String(self.prompt_input.clone()));
+                self.normal_mode();
+            }
+            Key::Char(c) => {
+                if !c.is_control() {
+                    self.prompt_input.push(c);
+                }
+                self.status_message = format!("{}{}", TOKENIZER_STRING, self.prompt_input)
+            }
+            Key::Esc => {
+                self.prompt_input.truncate(0);
+                self.normal_mode()
+            }
+            _ => (),
         }
     }
-    fn process_keypress(&mut self, pressed_key: Key) -> Result<(), std::io::Error> {
+
+    fn process_keypress_search(&mut self, search_direction: SearchDirection, pressed_key: Key) {
         match pressed_key {
-            Key::Esc => {
-                self.copy_status = CopyStatus::Noop;
-                self.should_quit = true;
+            Key::Backspace => {
+                self.prompt_input
+                    .truncate(self.prompt_input.len().saturating_sub(1));
+                self.status_message = format!("{}{}", SEARCH_STRING, self.prompt_input);
+                if let Some(position) =
+                    self.document
+                        .find(&self.prompt_input, &self.cursor_position, search_direction)
+                {
+                    self.cursor_position = position;
+                }
             }
+            Key::Char('\n') => {
+                self.copy_and_exit();
+            }
+            Key::Char(c) => {
+                if !c.is_control() {
+                    self.prompt_input.push(c);
+                }
+                self.status_message = format!("{}{}", SEARCH_STRING, self.prompt_input);
+                if let Some(position) =
+                    self.document
+                        .find(&self.prompt_input, &self.cursor_position, search_direction)
+                {
+                    self.cursor_position = position;
+                    self.scroll();
+                }
+            }
+            Key::Esc => {
+                self.prompt_input.truncate(0);
+                self.normal_mode()
+            }
+            _ => (),
+        }
+    }
+
+    fn process_keypress(&mut self, pressed_key: Key) -> Result<(), std::io::Error> {
+        match &self.input_mode {
+            InputMode::Normal => self.process_keypress_normal(pressed_key)?,
+            InputMode::Tokenizer => self.process_keypress_tokenizer(pressed_key),
+            InputMode::Search(search_direction) => {
+                self.process_keypress_search(*search_direction, pressed_key)
+            }
+        }
+        self.update_highlighted_text();
+        Ok(())
+    }
+
+    fn copy_and_exit(&mut self) {
+        let s = self.highlighted_text.text.to_string();
+        let copy_status = match self.clipboard.as_mut() {
+            None => CopyStatus::Success(s),
+            Some(clipboard) => match clipboard.set_text(s.clone()) {
+                Ok(_) => CopyStatus::Success(s),
+                Err(e) => CopyStatus::Error(e.to_string()),
+            },
+        };
+        self.should_quit = ShouldQuit::Ye(copy_status);
+    }
+
+    fn process_keypress_normal(&mut self, pressed_key: Key) -> Result<(), std::io::Error> {
+        match pressed_key {
+            Key::Esc => self.should_quit = ShouldQuit::Ye(CopyStatus::Noop),
             Key::Char('/') => {
-                self.highlighted_text =
-                    HighlightedText::new_cursor(self.cursor_position, &self.document);
-                self.refresh_screen()?;
-                self.search();
-                self.highlighted_text =
-                    HighlightedText::new_token(self.cursor_position, &self.document);
+                self.search_mode();
             }
             Key::Char('\r') | Key::Char('\n') => {
-                let s = self.highlighted_text.text.to_string();
-                match self.clipboard.as_mut() {
-                    None => self.copy_status = CopyStatus::Success(s),
-                    Some(clipboard) => match clipboard.set_text(s.clone()) {
-                        Ok(_) => self.copy_status = CopyStatus::Success(s),
-                        Err(e) => self.copy_status = CopyStatus::Error(e.to_string()),
-                    },
-                }
-
-                self.should_quit = true;
+                self.copy_and_exit();
             }
+            Key::Char('t') => self.token_mode(),
+            Key::Char('w') => self.document.update_tokenizer(Tokenizer::Whitespace),
             Key::Up
             | Key::Down
             | Key::Left
@@ -265,7 +341,6 @@ impl Editor {
         }
 
         self.cursor_position = Position { x, y };
-        self.update_highlighted_text();
     }
 
     pub fn draw_row(&mut self, index: usize) -> std::io::Result<()> {
@@ -294,9 +369,10 @@ impl Editor {
         let width = self.terminal.size().width as usize;
 
         let mut line_indicator = format!(
-            "{}/{} lines",
+            "{}/{} lines. Tokenizer: {}",
             self.cursor_position.y.saturating_add(1),
-            self.document.len()
+            self.document.len(),
+            self.document.tokenizer().as_str()
         );
 
         let len = line_indicator.len();
@@ -316,38 +392,6 @@ impl Editor {
         self.terminal.write(&message)?;
         Ok(())
     }
-    fn prompt<C>(&mut self, prompt: &str, mut callback: C) -> Result<Option<String>, std::io::Error>
-    where
-        C: FnMut(&mut Self, Key, &String),
-    {
-        let mut result = String::new();
-        loop {
-            let highlighted_text = &self.highlighted_text;
-            self.status_message = format!("{prompt}{result} {:?}", highlighted_text);
-            self.refresh_screen()?;
-            let key = self.terminal.read_key()?;
-            match key {
-                Key::Backspace => result.truncate(result.len().saturating_sub(1)),
-                Key::Char('\n') => break,
-                Key::Char(c) => {
-                    if !c.is_control() {
-                        result.push(c);
-                    }
-                }
-                Key::Esc => {
-                    result.truncate(0);
-                    break;
-                }
-                _ => (),
-            }
-            callback(self, key, &result);
-        }
-        self.status_message = String::new();
-        if result.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(result))
-    }
 
     pub(crate) fn update_highlighted_text(&mut self) {
         self.highlighted_text
@@ -356,6 +400,7 @@ impl Editor {
 
     fn die(&mut self, e: std::io::Error) -> std::io::Result<()> {
         self.terminal.clear_screen()?;
+        self.terminal.cursor_show()?;
         panic!("{e}");
     }
 }

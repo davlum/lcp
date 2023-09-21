@@ -3,6 +3,7 @@ use crate::Row;
 use crate::SearchDirection;
 
 use crate::highlighting::{HighlightedText, TextMode};
+use crate::row::mk_tokens;
 use std::io::BufRead;
 
 #[derive(Clone, Debug)]
@@ -11,19 +12,38 @@ pub enum Tokenizer {
     String(String),
 }
 
+impl Tokenizer {
+    pub(crate) fn as_str(&self) -> String {
+        match self {
+            Tokenizer::Whitespace => "whitespace (default)".to_string(),
+            Tokenizer::String(s) => format!("'{s}'"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Document {
     rows: Vec<Row>,
+    tokenizer: Tokenizer,
 }
 
 impl Document {
+    pub(crate) fn tokenizer(&self) -> &Tokenizer {
+        &self.tokenizer
+    }
+    pub(crate) fn update_tokenizer(&mut self, tokenizer: Tokenizer) {
+        for row in self.rows.iter_mut() {
+            row.tokens = mk_tokens(&row.string, &tokenizer)
+        }
+        self.tokenizer = tokenizer;
+    }
     pub(crate) fn new(input: impl BufRead) -> Result<Self, std::io::Error> {
         let tokenizer = Tokenizer::Whitespace;
         let mut rows = Vec::new();
         for value in input.lines() {
             rows.push(Row::new(value?.as_str(), &tokenizer));
         }
-        Ok(Self { rows })
+        Ok(Self { rows, tokenizer })
     }
     pub(crate) fn row(&self, index: usize) -> &Row {
         self.rows
