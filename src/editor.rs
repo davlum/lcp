@@ -86,7 +86,7 @@ impl Editor {
         clipboard: Option<Clipboard>,
         terminal: Terminal,
     ) -> Result<Self, std::io::Error> {
-        let highlighted_text = HighlightedText::new_token(Position::default(), &document);
+        let highlighted_text = HighlightedText::new_token(Position::default());
 
         Ok(Self {
             should_quit: ShouldQuit::No,
@@ -129,7 +129,9 @@ impl Editor {
 
     fn normal_mode(&mut self) {
         self.input_mode = InputMode::Normal;
-        self.highlighted_text = HighlightedText::new_token(self.cursor_position, &self.document);
+        self.prompt_input = "".to_string();
+        self.token_cursor();
+        self.highlighted_text = HighlightedText::new_token(self.cursor_position);
         self.status_message = HELP_STRING.to_string();
     }
 
@@ -142,7 +144,7 @@ impl Editor {
     fn search_mode(&mut self) {
         self.input_mode = InputMode::Search(SearchDirection::Forward);
         self.prompt_input = "".to_string();
-        self.highlighted_text = HighlightedText::new_cursor(self.cursor_position, &self.document);
+        self.highlighted_text = HighlightedText::new_search(self.cursor_position, 0);
         self.status_message = SEARCH_STRING.to_string();
     }
 
@@ -174,16 +176,21 @@ impl Editor {
 
     fn process_keypress_search(&mut self, search_direction: SearchDirection, pressed_key: Key) {
         match pressed_key {
-            Key::Backspace => {
+            Key::Backspace if !self.prompt_input.is_empty() => {
                 self.prompt_input
                     .truncate(self.prompt_input.len().saturating_sub(1));
-                self.status_message = format!("{}{}", SEARCH_STRING, self.prompt_input);
-                if let Some(position) =
-                    self.document
-                        .find(&self.prompt_input, &self.cursor_position, search_direction)
-                {
-                    self.cursor_position = position;
+            }
+            Key::Right | Key::Down => {
+                if let InputMode::Search(ref mut direction) = self.input_mode {
+                    *direction = SearchDirection::Forward;
                 }
+                self.move_cursor(Key::Right);
+            }
+            Key::Left | Key::Up => {
+                if let InputMode::Search(ref mut direction) = self.input_mode {
+                    *direction = SearchDirection::Backward;
+                }
+                self.move_cursor(Key::Left);
             }
             Key::Char('\n') => {
                 self.copy_and_exit();
@@ -192,41 +199,47 @@ impl Editor {
                 if !c.is_control() {
                     self.prompt_input.push(c);
                 }
-                self.status_message = format!("{}{}", SEARCH_STRING, self.prompt_input);
-                if let Some(position) =
-                    self.document
-                        .find(&self.prompt_input, &self.cursor_position, search_direction)
-                {
-                    self.cursor_position = position;
-                    self.scroll();
-                }
             }
             Key::Esc => {
                 self.prompt_input.truncate(0);
                 self.normal_mode()
             }
-            _ => (),
+            _ => {}
+        }
+        self.status_message = format!("{}{}", SEARCH_STRING, self.prompt_input);
+        if let Some(position) =
+            self.document
+                .find(&self.prompt_input, &self.cursor_position, search_direction)
+        {
+            self.cursor_position = position;
+            self.scroll();
         }
     }
 
     fn process_keypress(&mut self, pressed_key: Key) -> Result<(), std::io::Error> {
         match &self.input_mode {
-            InputMode::Normal => self.process_keypress_normal(pressed_key)?,
-            InputMode::Tokenizer => self.process_keypress_tokenizer(pressed_key),
+            InputMode::Normal => {
+                self.process_keypress_normal(pressed_key)?;
+                self.highlighted_text = HighlightedText::new_token(self.cursor_position)
+            }
+            InputMode::Tokenizer => {
+                self.process_keypress_tokenizer(pressed_key);
+            }
             InputMode::Search(search_direction) => {
-                self.process_keypress_search(*search_direction, pressed_key)
+                self.process_keypress_search(*search_direction, pressed_key);
+                self.highlighted_text =
+                    HighlightedText::new_search(self.cursor_position, self.prompt_input.len());
             }
         }
-        self.update_highlighted_text();
         Ok(())
     }
 
     fn copy_and_exit(&mut self) {
-        let s = self.highlighted_text.text.to_string();
+        let s = self.document.get_text(&self.highlighted_text);
         let copy_status = match self.clipboard.as_mut() {
-            None => CopyStatus::Success(s),
-            Some(clipboard) => match clipboard.set_text(s.clone()) {
-                Ok(_) => CopyStatus::Success(s),
+            None => CopyStatus::Success(s.to_string()),
+            Some(clipboard) => match clipboard.set_text(s) {
+                Ok(_) => CopyStatus::Success(s.to_string()),
                 Err(e) => CopyStatus::Error(e.to_string()),
             },
         };
@@ -393,15 +406,21 @@ impl Editor {
         Ok(())
     }
 
-    pub(crate) fn update_highlighted_text(&mut self) {
-        self.highlighted_text
-            .update_position(self.cursor_position, &self.document)
-    }
-
     fn die(&mut self, e: std::io::Error) -> std::io::Result<()> {
         self.terminal.clear_screen()?;
         self.terminal.cursor_show()?;
         panic!("{e}");
+    }
+
+    fn token_cursor(&mut self) {
+        let Position { x, y } = self.cursor_position;
+        let row = self.document.row(y);
+        let x = if x >= row.tokens.len() {
+            row.tokens.len() - 1
+        } else {
+            x
+        };
+        self.cursor_position = Position { x, y };
     }
 }
 

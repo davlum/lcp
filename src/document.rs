@@ -100,26 +100,28 @@ impl Document {
         None
     }
 
-    pub(crate) fn set_text(&self, text: &mut HighlightedText) {
-        match text.mode {
-            TextMode::Token => {
-                let y = text.position.y;
-                let x = text.position.x;
-                let row = self.row(y);
-                let tok = row.token(x);
-                text.text = row.string[tok.start..tok.start + tok.len].to_string();
-            }
-            TextMode::Cursor(first_pos) => {
-                let row = self.row(first_pos.y);
-                text.text = row.string[first_pos.x..text.position.x].to_string();
-            }
-        };
-    }
-
     pub(crate) fn highlight(&mut self, text: &HighlightedText) {
         self.unhighlight_rows();
         if let Some(row) = self.rows.get_mut(text.get_start_y()) {
             row.highlight(text)
+        }
+    }
+
+    pub(crate) fn get_text(&self, text: &HighlightedText) -> &str {
+        match text.mode {
+            TextMode::Token => {
+                let row = self.row(text.position.y);
+                let token = row.token(text.position.x);
+                &row.string[token.start..token.start + token.len]
+            }
+            TextMode::Visual(pos) => {
+                let row = self.row(text.position.y);
+                &row.string[text.position.x..pos.x]
+            }
+            TextMode::Search(len) => {
+                let row = self.row(text.position.y);
+                &row.string[text.position.x..text.position.x + len]
+            }
         }
     }
 }

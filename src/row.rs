@@ -146,7 +146,7 @@ impl Row {
     pub(crate) fn len(&self, text_mode: TextMode) -> usize {
         match text_mode {
             TextMode::Token => self.tokens.len() - 1,
-            TextMode::Cursor(_) => self.len,
+            TextMode::Visual(_) | TextMode::Search(_) => self.len,
         }
     }
 
@@ -154,53 +154,34 @@ impl Row {
         if at > self.len || query.is_empty() {
             return None;
         }
-        let start = if direction == SearchDirection::Forward {
-            at
-        } else {
-            0
+        let (start, end) = match direction {
+            SearchDirection::Forward => (at, self.len),
+            SearchDirection::Backward => (0, at),
         };
-        let end = if direction == SearchDirection::Forward {
-            self.len
-        } else {
-            at
-        };
-        #[allow(clippy::integer_arithmetic)]
-        let substring: String = self.string[..]
-            .graphemes(true)
-            .skip(start)
-            .take(end - start)
-            .collect();
-        let matching_byte_index = if direction == SearchDirection::Forward {
-            substring.find(query)
-        } else {
-            substring.rfind(query)
-        };
-        if let Some(matching_byte_index) = matching_byte_index {
-            for (grapheme_index, (byte_index, _)) in
-                substring[..].grapheme_indices(true).enumerate()
-            {
-                if matching_byte_index == byte_index {
-                    #[allow(clippy::integer_arithmetic)]
-                    return Some(start + grapheme_index);
-                }
-            }
+
+        let substring: String = self.string.chars().skip(start).take(end - start).collect();
+        match direction {
+            SearchDirection::Forward => substring.find(query),
+            SearchDirection::Backward => substring.rfind(query),
         }
-        None
+        .map(|i| i + start)
     }
 
     pub(crate) fn highlight(&mut self, text: &HighlightedText) {
         self.highlighting = vec![highlighting::Type::None; self.string.len()];
         match text.mode {
             TextMode::Token => {
-                let tok = self
-                    .tokens
-                    .get(text.position.x)
-                    .expect("Token should be here");
+                let tok = self.token(text.position.x);
                 for i in tok.start..tok.start + tok.len {
                     self.highlighting[i] = highlighting::Type::Highlighted;
                 }
             }
-            TextMode::Cursor(start_pos) => {
+            TextMode::Search(len) => {
+                for i in text.position.x..text.position.x + len {
+                    self.highlighting[i] = highlighting::Type::Highlighted;
+                }
+            }
+            TextMode::Visual(start_pos) => {
                 for i in start_pos.x..text.position.x {
                     self.highlighting[i] = highlighting::Type::Highlighted;
                 }

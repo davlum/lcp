@@ -6,6 +6,7 @@ fn test_find() {
     assert_eq!(row.find("t", 0, SearchDirection::Forward), Some(1));
     assert_eq!(row.find("t", 2, SearchDirection::Forward), Some(4));
     assert_eq!(row.find("t", 5, SearchDirection::Forward), Some(5));
+    assert_eq!(row.find("t", 3, SearchDirection::Backward), Some(1));
 }
 
 #[test]
