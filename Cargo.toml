@@ -9,3 +9,6 @@ edition = "2021"
 termion = "1"
 unicode-segmentation = "1"
 arboard = "3.2"
+
+[dev-dependencies]
+stringreader = "0.1"

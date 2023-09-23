@@ -5,7 +5,8 @@ pub(crate) enum TextMode {
     Token,
     /// Visual contains a position which is the starting position of the highlighting
     Visual(Position),
-    Search(usize),
+    /// the str len is optional as there may be no matches to highlight
+    Search(Option<usize>),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -15,7 +16,7 @@ pub(crate) struct HighlightedText {
 }
 
 impl HighlightedText {
-    pub(crate) fn new_search(position: Position, len: usize) -> Self {
+    pub(crate) fn new_search(position: Position, len: Option<usize>) -> Self {
         Self {
             position,
             mode: TextMode::Search(len),
@@ -28,11 +29,15 @@ impl HighlightedText {
         }
     }
 
-    pub(crate) fn get_start_y(&self) -> usize {
-        match self.mode {
-            TextMode::Token | TextMode::Search(_) => self.position.y,
-            TextMode::Visual(pos) => pos.y,
+    pub(crate) fn new_visual(position: Position) -> Self {
+        Self {
+            position,
+            mode: TextMode::Visual(position),
         }
+    }
+
+    pub(crate) fn update_position(&mut self, position: Position) {
+        self.position = position;
     }
 }
 

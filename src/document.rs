@@ -1,10 +1,10 @@
+use std::io::BufRead;
+
+use crate::highlighting::{HighlightedText, TextMode};
+use crate::row::{mk_tokens, switch_start_end};
 use crate::Position;
 use crate::Row;
 use crate::SearchDirection;
-
-use crate::highlighting::{HighlightedText, TextMode};
-use crate::row::mk_tokens;
-use std::io::BufRead;
 
 #[derive(Clone, Debug)]
 pub enum Tokenizer {
@@ -41,7 +41,7 @@ impl Document {
         let tokenizer = Tokenizer::Whitespace;
         let mut rows = Vec::new();
         for value in input.lines() {
-            rows.push(Row::new(value?.as_str(), &tokenizer));
+            rows.push(Row::new(value?.as_str().trim_end(), &tokenizer));
         }
         Ok(Self { rows, tokenizer })
     }
@@ -102,26 +102,51 @@ impl Document {
 
     pub(crate) fn highlight(&mut self, text: &HighlightedText) {
         self.unhighlight_rows();
-        if let Some(row) = self.rows.get_mut(text.get_start_y()) {
+        if let TextMode::Visual(start_position) = text.mode {
+            let (start, end) = switch_start_end(start_position.y, text.position.y);
+            for row_index in start..end + 1 {
+                if let Some(row) = self.rows.get_mut(row_index) {
+                    row.highlight(text)
+                }
+            }
+        } else if let Some(row) = self.rows.get_mut(text.position.y) {
             row.highlight(text)
         }
     }
 
-    pub(crate) fn get_text(&self, text: &HighlightedText) -> &str {
+    pub(crate) fn get_text(&self, text: &HighlightedText) -> String {
         match text.mode {
             TextMode::Token => {
                 let row = self.row(text.position.y);
                 let token = row.token(text.position.x);
-                &row.string[token.start..token.start + token.len]
+                row.string[token.start..token.start + token.len].to_string()
             }
-            TextMode::Visual(pos) => {
+            TextMode::Visual(start_pos) => {
+                if start_pos != text.position {
+                    let (start, end) = switch_start_end(start_pos.y, text.position.y);
+                    let mut lines = Vec::new();
+                    for row_index in start..end + 1 {
+                        let row = self.row(row_index);
+                        let (start, end) = switch_start_end(start_pos.x, text.position.x);
+                        // if end + 1 >= row.string.len() {
+                        //     end = row.string.len();
+                        // }
+                        lines.push(&row.string[start..end + 1]);
+                    }
+                    lines.join("\n")
+                } else {
+                    String::new()
+                }
+            }
+            TextMode::Search(Some(len)) => {
                 let row = self.row(text.position.y);
-                &row.string[text.position.x..pos.x]
+                row.string[text.position.x..text.position.x + len].to_string()
             }
-            TextMode::Search(len) => {
-                let row = self.row(text.position.y);
-                &row.string[text.position.x..text.position.x + len]
-            }
+            TextMode::Search(None) => String::new(),
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/test_document.rs"]
+mod tests;

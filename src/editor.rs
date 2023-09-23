@@ -10,9 +10,13 @@ use crate::Terminal;
 const HELP_STRING: &str =
     "HELP: esc = quit | ENTER = copy | / = find | t = change tokenizer | w = whitespace (default) | v = visual mode";
 
-const TOKENIZER_STRING: &str = "Change the tokenizer (default is whitespace): ";
+const TOKENIZER_STRING: &str = "Enter text to change the tokenizer (default is whitespace): ";
 
-const SEARCH_STRING: &str = "Search (ESC to cancel, Arrows to navigate): ";
+const SEARCH_STRING: &str = "(ESC to cancel | Arrows to navigate): ";
+
+const VISUAL_CURSOR_STRING: &str = "(v = start highlighting | ESC to cancel)";
+
+const VISUAL_BLOCK_STRING: &str = "(ESC to cancel | ENTER to copy )";
 
 const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
 const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
@@ -22,6 +26,12 @@ const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
 pub enum SearchDirection {
     Forward,
     Backward,
+}
+
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+pub enum VisualMode {
+    Cursor,
+    Block,
 }
 
 #[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
@@ -37,11 +47,24 @@ enum CopyStatus {
     Noop,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum InputMode {
     Normal,
     Tokenizer,
     Search(SearchDirection),
+    Visual(VisualMode),
+}
+
+impl InputMode {
+    fn as_str(&self) -> &str {
+        match self {
+            InputMode::Normal => "Token",
+            InputMode::Tokenizer => "Tokenizer",
+            InputMode::Search(_) => "Search",
+            InputMode::Visual(VisualMode::Cursor) => "Visual (Cursor)",
+            InputMode::Visual(VisualMode::Block) => "Visual (Block)",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -65,7 +88,6 @@ pub struct Editor {
 
 impl Editor {
     pub fn run(&mut self) -> std::io::Result<()> {
-        self.terminal.cursor_hide()?;
         loop {
             if let Err(error) = self.refresh_screen() {
                 self.die(error)?;
@@ -102,7 +124,20 @@ impl Editor {
         })
     }
 
+    fn draw(&mut self) -> std::io::Result<()> {
+        self.document.highlight(&self.highlighted_text);
+        self.draw_rows()?;
+        self.draw_status_bar()?;
+        self.draw_message_bar()?;
+        if let InputMode::Visual(VisualMode::Cursor) = self.input_mode {
+            self.terminal.cursor_position(&self.cursor_position)?;
+            self.terminal.cursor_show()?;
+        }
+        Ok(())
+    }
+
     fn refresh_screen(&mut self) -> Result<(), std::io::Error> {
+        self.terminal.cursor_hide()?;
         // Cursors will move whether they are hidden or not.
         // They need to be reset on each loop or the position will affect
         // where we start outputting on the tty.
@@ -112,17 +147,21 @@ impl Editor {
             match copy_status {
                 CopyStatus::Noop => self.terminal.writeln("Copied Nothing.")?,
                 CopyStatus::Success(s) => {
-                    self.terminal.writeln(&format!("Copied:\r\n\r\n{}", s))?
+                    self.terminal.writeln("Copied:\r\n")?;
+                    for line in s.lines() {
+                        self.terminal.writeln(line)?;
+                    }
                 }
-                CopyStatus::Error(e) => self
-                    .terminal
-                    .writeln(&format!("Error when copying to clipboard:\r\n\r\n{}", e))?,
-            }
+                CopyStatus::Error(e) => {
+                    self.terminal
+                        .writeln("Error when copying to clipboard:\r\n")?;
+                    for line in e.lines() {
+                        self.terminal.writeln(line)?;
+                    }
+                }
+            };
         } else {
-            self.document.highlight(&self.highlighted_text);
-            self.draw_rows()?;
-            self.draw_status_bar()?;
-            self.draw_message_bar()?;
+            self.draw()?;
         }
         self.terminal.flush()
     }
@@ -142,10 +181,28 @@ impl Editor {
     }
 
     fn search_mode(&mut self) {
+        if let InputMode::Normal = self.input_mode {
+            self.normal_cursor();
+        }
         self.input_mode = InputMode::Search(SearchDirection::Forward);
         self.prompt_input = "".to_string();
-        self.highlighted_text = HighlightedText::new_search(self.cursor_position, 0);
+        self.highlighted_text = HighlightedText::new_search(self.cursor_position, None);
         self.status_message = SEARCH_STRING.to_string();
+    }
+
+    fn visual_mode(&mut self) {
+        self.prompt_input = "".to_string();
+        if let InputMode::Visual(VisualMode::Cursor) = self.input_mode {
+            self.input_mode = InputMode::Visual(VisualMode::Block);
+            self.status_message = VISUAL_BLOCK_STRING.to_string();
+        } else {
+            if let InputMode::Normal = self.input_mode {
+                self.normal_cursor();
+            }
+            self.input_mode = InputMode::Visual(VisualMode::Cursor);
+            self.highlighted_text = HighlightedText::new_visual(self.cursor_position);
+            self.status_message = VISUAL_CURSOR_STRING.to_string();
+        }
     }
 
     fn process_keypress_tokenizer(&mut self, pressed_key: Key) {
@@ -202,33 +259,41 @@ impl Editor {
             }
             Key::Esc => {
                 self.prompt_input.truncate(0);
-                self.normal_mode()
+                self.normal_mode();
+                return;
             }
             _ => {}
         }
         self.status_message = format!("{}{}", SEARCH_STRING, self.prompt_input);
-        if let Some(position) =
-            self.document
+        let len =
+            match self
+                .document
                 .find(&self.prompt_input, &self.cursor_position, search_direction)
-        {
-            self.cursor_position = position;
-            self.scroll();
-        }
+            {
+                None => None,
+                Some(position) => {
+                    self.cursor_position = position;
+                    self.scroll();
+                    Some(self.prompt_input.len())
+                }
+            };
+
+        self.highlighted_text = HighlightedText::new_search(self.cursor_position, len);
     }
 
     fn process_keypress(&mut self, pressed_key: Key) -> Result<(), std::io::Error> {
         match &self.input_mode {
             InputMode::Normal => {
                 self.process_keypress_normal(pressed_key)?;
-                self.highlighted_text = HighlightedText::new_token(self.cursor_position)
             }
             InputMode::Tokenizer => {
                 self.process_keypress_tokenizer(pressed_key);
             }
             InputMode::Search(search_direction) => {
                 self.process_keypress_search(*search_direction, pressed_key);
-                self.highlighted_text =
-                    HighlightedText::new_search(self.cursor_position, self.prompt_input.len());
+            }
+            InputMode::Visual(_) => {
+                self.process_keypress_normal(pressed_key)?;
             }
         }
         Ok(())
@@ -236,9 +301,13 @@ impl Editor {
 
     fn copy_and_exit(&mut self) {
         let s = self.document.get_text(&self.highlighted_text);
+        if s.is_empty() {
+            self.should_quit = ShouldQuit::Ye(CopyStatus::Noop);
+            return;
+        }
         let copy_status = match self.clipboard.as_mut() {
             None => CopyStatus::Success(s.to_string()),
-            Some(clipboard) => match clipboard.set_text(s) {
+            Some(clipboard) => match clipboard.set_text(&s) {
                 Ok(_) => CopyStatus::Success(s.to_string()),
                 Err(e) => CopyStatus::Error(e.to_string()),
             },
@@ -248,14 +317,23 @@ impl Editor {
 
     fn process_keypress_normal(&mut self, pressed_key: Key) -> Result<(), std::io::Error> {
         match pressed_key {
-            Key::Esc => self.should_quit = ShouldQuit::Ye(CopyStatus::Noop),
+            Key::Esc => {
+                if let InputMode::Visual(_) = self.input_mode {
+                    self.normal_mode()
+                } else {
+                    self.should_quit = ShouldQuit::Ye(CopyStatus::Noop)
+                }
+            }
             Key::Char('/') => {
                 self.search_mode();
+                return Ok(());
             }
-            Key::Char('\r') | Key::Char('\n') => {
-                self.copy_and_exit();
-            }
+            Key::Char('\r') | Key::Char('\n') => self.copy_and_exit(),
             Key::Char('t') => self.token_mode(),
+            Key::Char('v') => {
+                self.visual_mode();
+                return Ok(());
+            }
             Key::Char('w') => self.document.update_tokenizer(Tokenizer::Whitespace),
             Key::Up
             | Key::Down
@@ -269,6 +347,19 @@ impl Editor {
             _ => (),
         }
         self.scroll();
+        match self.input_mode {
+            InputMode::Normal => {
+                self.highlighted_text = HighlightedText::new_token(self.cursor_position)
+            }
+            InputMode::Visual(VisualMode::Cursor) => {
+                self.highlighted_text = HighlightedText::new_visual(self.cursor_position)
+            }
+            InputMode::Visual(VisualMode::Block) => {
+                self.highlighted_text.update_position(self.cursor_position);
+            }
+            _ => {}
+        };
+        // self.status_message = format!("{:?}", self.highlighted_text);
         Ok(())
     }
     fn scroll(&mut self) {
@@ -382,9 +473,10 @@ impl Editor {
         let width = self.terminal.size().width as usize;
 
         let mut line_indicator = format!(
-            "{}/{} lines. Tokenizer: {}",
+            "{}/{} lines. Mode: {}. Tokenizer: {}",
             self.cursor_position.y.saturating_add(1),
             self.document.len(),
+            self.input_mode.as_str(),
             self.document.tokenizer().as_str()
         );
 
@@ -421,6 +513,13 @@ impl Editor {
             x
         };
         self.cursor_position = Position { x, y };
+    }
+
+    fn normal_cursor(&mut self) {
+        let Position { x, y } = self.cursor_position;
+        let row = self.document.row(y);
+        let tok = row.token(x);
+        self.cursor_position = Position { x: tok.start, y };
     }
 }
 

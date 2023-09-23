@@ -2,6 +2,7 @@ use crate::document::Tokenizer;
 use crate::highlighting::{HighlightedText, TextMode};
 use crate::{highlighting, SearchDirection};
 use std::cmp;
+use std::cmp::Ordering;
 use termion::color;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -146,7 +147,7 @@ impl Row {
     pub(crate) fn len(&self, text_mode: TextMode) -> usize {
         match text_mode {
             TextMode::Token => self.tokens.len() - 1,
-            TextMode::Visual(_) | TextMode::Search(_) => self.len,
+            TextMode::Visual(_) | TextMode::Search(_) => self.len - 1,
         }
     }
 
@@ -173,17 +174,26 @@ impl Row {
             TextMode::Token => {
                 let tok = self.token(text.position.x);
                 for i in tok.start..tok.start + tok.len {
-                    self.highlighting[i] = highlighting::Type::Highlighted;
+                    if let Some(highlighting) = self.highlighting.get_mut(i) {
+                        *highlighting = highlighting::Type::Highlighted;
+                    };
                 }
             }
-            TextMode::Search(len) => {
-                for i in text.position.x..text.position.x + len {
-                    self.highlighting[i] = highlighting::Type::Highlighted;
+            TextMode::Search(maybe_len) => {
+                if let Some(len) = maybe_len {
+                    for i in text.position.x..text.position.x + len {
+                        if let Some(highlighting) = self.highlighting.get_mut(i) {
+                            *highlighting = highlighting::Type::Highlighted;
+                        };
+                    }
                 }
             }
             TextMode::Visual(start_pos) => {
-                for i in start_pos.x..text.position.x {
-                    self.highlighting[i] = highlighting::Type::Highlighted;
+                let (start, end) = switch_start_end(start_pos.x, text.position.x);
+                for i in start..end + 1 {
+                    if let Some(highlighting) = self.highlighting.get_mut(i) {
+                        *highlighting = highlighting::Type::Highlighted;
+                    };
                 }
             }
         }
@@ -191,6 +201,13 @@ impl Row {
 
     pub(crate) fn unhighlight(&mut self) {
         self.highlighting = vec![];
+    }
+}
+
+pub(crate) fn switch_start_end(x1: usize, x2: usize) -> (usize, usize) {
+    match x1.cmp(&x2) {
+        Ordering::Less | Ordering::Equal => (x1, x2),
+        Ordering::Greater => (x2, x1),
     }
 }
 

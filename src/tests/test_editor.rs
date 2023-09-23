@@ -1,32 +1,6 @@
+use std::io::BufReader;
+
 use super::*;
-use std::io::{BufReader, Read};
-use std::slice::Iter;
-
-pub struct StringReader<'a> {
-    iter: Iter<'a, u8>,
-}
-
-impl<'a> StringReader<'a> {
-    /// Wrap a string in a `StringReader`, which implements `std::io::Read`.
-    pub fn new(data: &'a str) -> Self {
-        Self {
-            iter: data.as_bytes().iter(),
-        }
-    }
-}
-
-impl<'a> Read for StringReader<'a> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        for i in 0..buf.len() {
-            if let Some(x) = self.iter.next() {
-                buf[i] = *x;
-            } else {
-                return Ok(i);
-            }
-        }
-        Ok(buf.len())
-    }
-}
 
 enum TestFile {
     GetPods,
@@ -45,7 +19,7 @@ impl TestFile {
 }
 
 fn test_editor(test_file: TestFile) -> Editor {
-    let buf = BufReader::new(StringReader::new(test_file.to_str()));
+    let buf = BufReader::new(stringreader::StringReader::new(test_file.to_str()));
     let document = Document::new(buf).unwrap();
     let terminal = Terminal::new(Some((150, 150))).unwrap();
     Editor::new(document, None, terminal).unwrap()
@@ -168,6 +142,92 @@ mod tokenizer {
                 Key::Right,
             ],
             "\"random\"",
+        );
+    }
+}
+
+mod search {
+    use super::*;
+    #[test]
+    fn test_search_kind() {
+        test_key_seq(
+            TestFile::PodYaml,
+            vec![
+                Key::Char('/'),
+                Key::Char('k'),
+                Key::Char('i'),
+                Key::Char('n'),
+                Key::Char('d'),
+            ],
+            "kind",
+        );
+    }
+
+    #[test]
+    fn test_search_king() {
+        let keys = vec![
+            Key::Char('/'),
+            Key::Char('k'),
+            Key::Char('i'),
+            Key::Char('n'),
+            Key::Char('g'),
+            Key::Char('\n'),
+        ];
+
+        let mut editor = test_editor(TestFile::PodYaml);
+        for key in keys {
+            editor.process_keypress(key).unwrap();
+        }
+        assert_eq!(editor.should_quit, ShouldQuit::Ye(CopyStatus::Noop));
+    }
+
+    #[test]
+    fn test_search_default() {
+        let keys = vec![Key::Char('/'), Key::Char('\n')];
+
+        let mut editor = test_editor(TestFile::PodYaml);
+        for key in keys {
+            editor.process_keypress(key).unwrap();
+        }
+        assert_eq!(editor.should_quit, ShouldQuit::Ye(CopyStatus::Noop));
+    }
+
+    #[test]
+    fn test_search_and_normal() {
+        test_key_seq(
+            TestFile::PodYaml,
+            vec![
+                Key::Char('/'),
+                Key::Char('c'),
+                Key::Char('r'),
+                Key::Char('e'),
+                Key::Char('a'),
+                Key::Esc,
+                Key::Char('\n'),
+            ],
+            "\"2023-09-18T21:16:04Z\"",
+        );
+    }
+}
+
+mod visual {
+    use super::*;
+
+    #[test]
+    fn test_visual_mode() {
+        test_key_seq(
+            TestFile::PodYaml,
+            vec![
+                Key::Down,
+                Key::Down,
+                Key::Down,
+                Key::Down,
+                Key::Down,
+                Key::Char('v'),
+                Key::Char('v'),
+                Key::Char('$'),
+            ],
+            "gatekeeper.sh/mutations: AssignMetadata//cluster-name-tag-datadog-agent:1, ModifySet//allow-scheduling-on-meta-node-pools:1",
         );
     }
 }
