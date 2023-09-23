@@ -129,10 +129,10 @@ impl Editor {
         self.draw_rows()?;
         self.draw_status_bar()?;
         self.draw_message_bar()?;
-        if let InputMode::Visual(VisualMode::Cursor) = self.input_mode {
-            self.terminal.cursor_position(&self.cursor_position)?;
-            self.terminal.cursor_show()?;
-        }
+        // if let InputMode::Visual(VisualMode::Cursor) = self.input_mode {
+        //     self.terminal.cursor_position(&self.cursor_position)?;
+        //     self.terminal.cursor_show()?;
+        // }
         Ok(())
     }
 
@@ -507,12 +507,11 @@ impl Editor {
     fn token_cursor(&mut self) {
         let Position { x, y } = self.cursor_position;
         let row = self.document.row(y);
-        let x = if x >= row.tokens.len() {
-            row.tokens.len() - 1
-        } else {
-            x
-        };
-        self.cursor_position = Position { x, y };
+        if row.len > 0 {
+            let percent_row = x as f64 / row.len as f64;
+            let x = (percent_row * row.tokens.len() as f64).floor() as usize;
+            self.cursor_position = Position { x, y };
+        }
     }
 
     fn normal_cursor(&mut self) {

@@ -205,7 +205,7 @@ mod search {
                 Key::Esc,
                 Key::Char('\n'),
             ],
-            "\"2023-09-18T21:16:04Z\"",
+            "creationTimestamp:",
         );
     }
 }
