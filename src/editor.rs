@@ -232,6 +232,7 @@ impl Editor {
     }
 
     fn process_keypress_search(&mut self, search_direction: SearchDirection, pressed_key: Key) {
+        let mut current_direction = search_direction;
         match pressed_key {
             Key::Backspace if !self.prompt_input.is_empty() => {
                 self.prompt_input
@@ -239,13 +240,15 @@ impl Editor {
             }
             Key::Right | Key::Down => {
                 if let InputMode::Search(ref mut direction) = self.input_mode {
-                    *direction = SearchDirection::Forward;
+                    current_direction = SearchDirection::Forward;
+                    *direction = current_direction;
                 }
                 self.move_cursor(Key::Right);
             }
             Key::Left | Key::Up => {
                 if let InputMode::Search(ref mut direction) = self.input_mode {
-                    *direction = SearchDirection::Backward;
+                    current_direction = SearchDirection::Backward;
+                    *direction = current_direction;
                 }
                 self.move_cursor(Key::Left);
             }
@@ -268,7 +271,7 @@ impl Editor {
         let len =
             match self
                 .document
-                .find(&self.prompt_input, &self.cursor_position, search_direction)
+                .find(&self.prompt_input, &self.cursor_position, current_direction)
             {
                 None => None,
                 Some(position) => {
