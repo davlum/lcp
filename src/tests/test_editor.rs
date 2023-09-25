@@ -208,6 +208,22 @@ mod search {
             "creationTimestamp:",
         );
     }
+
+    #[test]
+    fn test_search_wraps_and_normal() {
+        test_key_seq(
+            TestFile::PodYaml,
+            vec![
+                Key::Char('/'),
+                Key::Char('a'),
+                Key::Char('n'),
+                Key::Left,
+                Key::Esc,
+                Key::Char('\n'),
+            ],
+            "Guaranteed",
+        );
+    }
 }
 
 mod visual {

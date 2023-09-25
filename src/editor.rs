@@ -282,6 +282,7 @@ impl Editor {
             };
 
         self.highlighted_text = HighlightedText::new_search(self.cursor_position, len);
+        // self.status_message = format!("{:?}", self.highlighted_text);
     }
 
     fn process_keypress(&mut self, pressed_key: Key) -> Result<(), std::io::Error> {
@@ -362,7 +363,6 @@ impl Editor {
             }
             _ => {}
         };
-        // self.status_message = format!("{:?}", self.highlighted_text);
         Ok(())
     }
     fn scroll(&mut self) {
