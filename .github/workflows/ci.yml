@@ -1,4 +1,4 @@
-name: Rust
+name: lcp
 
 on: [push]
 

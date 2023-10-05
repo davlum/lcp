@@ -1,3 +1,5 @@
+![build](https://github.com/davlum/lcp/workflows/lcp/badge.svg)
+
 # LessCP
 
 Kind of like [less][1], but then adds the highlighted results to the clipboard.
