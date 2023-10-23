@@ -6,6 +6,7 @@ enum TestFile {
     GetPods,
     PodYaml,
     Csv,
+    GitStatus,
 }
 
 impl TestFile {
@@ -14,6 +15,7 @@ impl TestFile {
             TestFile::GetPods => include_str!("files/k-get-po.txt"),
             TestFile::PodYaml => include_str!("files/pod.yaml"),
             TestFile::Csv => include_str!("files/sample-vocabulary.csv"),
+            TestFile::GitStatus => include_str!("files/git-status.txt"),
         }
     }
 }
@@ -106,6 +108,15 @@ mod normal {
     #[test]
     fn test_down_nine_po_copy() {
         test_key_seq(TestFile::PodYaml, vec![Key::Down; 9], "creationTimestamp:");
+    }
+
+    #[test]
+    fn test_empty_token_rows() {
+        test_key_seq(
+            TestFile::GitStatus,
+            vec![Key::Down; 9],
+            "src/tests/files/git-status.txt",
+        );
     }
 }
 
