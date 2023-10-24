@@ -4,6 +4,8 @@
 
 Kind of like [less][1], but then adds the highlighted results to the clipboard.
 
+Inspired by/built upon https://www.flenker.blog/hecto/.
+
 ## Installation
 
 ### Binaries
