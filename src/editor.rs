@@ -385,7 +385,7 @@ impl Editor {
         let Position { mut y, mut x } = self.cursor_position;
         let height = self.document.len() - 1;
         let row = self.document.row(y);
-        let mut width = row.len(self.highlighted_text.mode);
+        let width = row.len(self.highlighted_text.mode);
         match key {
             Key::Char('$') => {
                 x = width;
@@ -440,13 +440,23 @@ impl Editor {
             _ => (),
         }
         let row = self.document.row(y);
-        width = row.len(self.highlighted_text.mode);
+        let width = row.len(self.highlighted_text.mode);
 
         if x > width {
             x = width;
         }
 
         self.cursor_position = Position { x, y };
+
+        // If there are no tokens, move again.
+        // We assume this happens only when moving the cursor up or down.
+        if width == usize::MAX {
+            match key {
+                Key::Up => self.move_cursor(Key::Up),
+                Key::Down => self.move_cursor(Key::Down),
+                _ => self.move_cursor(Key::Down),
+            }
+        }
     }
 
     pub fn draw_row(&mut self, index: usize) -> std::io::Result<()> {
@@ -519,8 +529,9 @@ impl Editor {
     fn normal_cursor(&mut self) {
         let Position { x, y } = self.cursor_position;
         let row = self.document.row(y);
-        let tok = row.token(x);
-        self.cursor_position = Position { x: tok.start, y };
+        if let Some(tok) = row.token(x) {
+            self.cursor_position = Position { x: tok.start, y };
+        }
     }
 }
 

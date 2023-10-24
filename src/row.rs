@@ -69,45 +69,9 @@ impl Row {
 }
 
 impl Row {
-    pub(crate) fn token(&self, index: usize) -> &Token {
-        self.tokens
-            .get(index)
-            .unwrap_or_else(|| panic!("Should be a token at: {index}"))
+    pub(crate) fn token(&self, index: usize) -> Option<&Token> {
+        self.tokens.get(index)
     }
-
-    // pub(crate) fn render(&self, start: usize, end: usize) -> String {
-    //     let end = cmp::min(end, self.string.len());
-    //     let start = cmp::min(start, end);
-    //     let mut result = String::new();
-    //     let mut current_highlighting = &highlighting::Type::None;
-    //     #[allow(clippy::integer_arithmetic)]
-    //     for (index, grapheme) in self.string[..]
-    //         .graphemes(true)
-    //         .enumerate()
-    //         .skip(start)
-    //         .take(end - start)
-    //     {
-    //         if let Some(c) = grapheme.chars().next() {
-    //             let highlighting_type = self
-    //                 .highlighting
-    //                 .get(index)
-    //                 .unwrap_or(&highlighting::Type::None);
-    //             if highlighting_type != current_highlighting {
-    //                 current_highlighting = highlighting_type;
-    //                 let start_highlight = format!("{}", color::Bg(HIGHLIGHTING_COLOR));
-    //                 result.push_str(&start_highlight);
-    //             }
-    //             if c == '\t' {
-    //                 result.push(' ');
-    //             } else {
-    //                 result.push(c);
-    //             }
-    //         }
-    //     }
-    //     let end_highlight = format!("{}", color::Bg(color::Reset));
-    //     result.push_str(&end_highlight);
-    //     result
-    // }
 
     pub(crate) fn render(&self, start: usize, end: usize) -> String {
         let end = cmp::min(end, self.string.len());
@@ -146,7 +110,10 @@ impl Row {
 
     pub(crate) fn len(&self, text_mode: TextMode) -> usize {
         match text_mode {
-            TextMode::Token => self.tokens.len() - 1,
+            TextMode::Token => match self.tokens.len() {
+                0 => usize::MAX,
+                n => n - 1,
+            },
             TextMode::Visual(_) | TextMode::Search(_) => self.len - 1,
         }
     }
@@ -172,11 +139,12 @@ impl Row {
         self.highlighting = vec![highlighting::Type::None; self.string.len()];
         match text.mode {
             TextMode::Token => {
-                let tok = self.token(text.position.x);
-                for i in tok.start..tok.start + tok.len {
-                    if let Some(highlighting) = self.highlighting.get_mut(i) {
-                        *highlighting = highlighting::Type::Highlighted;
-                    };
+                if let Some(tok) = self.token(text.position.x) {
+                    for i in tok.start..tok.start + tok.len {
+                        if let Some(highlighting) = self.highlighting.get_mut(i) {
+                            *highlighting = highlighting::Type::Highlighted;
+                        };
+                    }
                 }
             }
             TextMode::Search(maybe_len) => {

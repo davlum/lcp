@@ -119,7 +119,10 @@ impl Document {
         match text.mode {
             TextMode::Token => {
                 let row = self.row(text.position.y);
-                let token = row.token(text.position.x);
+                let token = match row.token(text.position.x) {
+                    None => return "".to_string(),
+                    Some(t) => t,
+                };
                 row.string[token.start..token.start + token.len].to_string()
             }
             TextMode::Visual(start_pos) => {

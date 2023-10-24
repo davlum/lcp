@@ -114,7 +114,7 @@ mod normal {
     fn test_empty_token_rows() {
         test_key_seq(
             TestFile::GitStatus,
-            vec![Key::Down; 9],
+            vec![Key::Down; 4],
             "src/tests/files/git-status.txt",
         );
     }
