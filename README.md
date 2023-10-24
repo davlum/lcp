@@ -6,7 +6,13 @@ Kind of like [less][1], but then adds the highlighted results to the clipboard.
 
 ## Installation
 
-Currently install from source with `cargo`.
+### Binaries
+
+Download one of the binary releases.
+
+### From source
+
+Install from source with `cargo`.
 
 ```bash
 cargo install --path .
