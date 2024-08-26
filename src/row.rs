@@ -69,6 +69,15 @@ impl Row {
 }
 
 impl Row {
+    pub(crate) fn whitespace_pad(&mut self, total_len: usize) {
+        let whitespace_len = total_len.saturating_sub(self.string.len());
+        if whitespace_len > 0 {
+            let whitespace = vec![" "; whitespace_len].join("");
+            self.string.push_str(&whitespace);
+            self.len = whitespace_len;
+        }
+    }
+
     pub(crate) fn token(&self, index: usize) -> Option<&Token> {
         self.tokens.get(index)
     }
@@ -112,9 +121,9 @@ impl Row {
         match text_mode {
             TextMode::Token => match self.tokens.len() {
                 0 => usize::MAX,
-                n => n - 1,
+                n => n.saturating_sub(1),
             },
-            TextMode::Visual(_) | TextMode::Search(_) => self.len - 1,
+            TextMode::Visual(_) | TextMode::Search(_) => self.len.saturating_sub(1),
         }
     }
 

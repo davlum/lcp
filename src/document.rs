@@ -40,8 +40,15 @@ impl Document {
     pub(crate) fn new(input: impl BufRead) -> Result<Self, std::io::Error> {
         let tokenizer = Tokenizer::Whitespace;
         let mut rows = Vec::new();
+        let mut longest_line = 0;
+
         for value in input.lines() {
-            rows.push(Row::new(value?.as_str().trim_end(), &tokenizer));
+            let row = Row::new(value?.as_str().trim_end(), &tokenizer);
+            longest_line = std::cmp::max(longest_line, row.len);
+            rows.push(row);
+        }
+        for row in rows.iter_mut() {
+            row.whitespace_pad(longest_line);
         }
         Ok(Self { rows, tokenizer })
     }

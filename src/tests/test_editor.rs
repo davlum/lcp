@@ -7,6 +7,7 @@ enum TestFile {
     PodYaml,
     Csv,
     GitStatus,
+    VisualGitStatus,
 }
 
 impl TestFile {
@@ -16,6 +17,7 @@ impl TestFile {
             TestFile::PodYaml => include_str!("files/pod.yaml"),
             TestFile::Csv => include_str!("files/sample-vocabulary.csv"),
             TestFile::GitStatus => include_str!("files/git-status.txt"),
+            TestFile::VisualGitStatus => include_str!("files/visual-git-status.txt"),
         }
     }
 }
@@ -214,7 +216,6 @@ mod search {
                 Key::Char('e'),
                 Key::Char('a'),
                 Key::Esc,
-                Key::Char('\n'),
             ],
             "creationTimestamp:",
         );
@@ -230,7 +231,6 @@ mod search {
                 Key::Char('n'),
                 Key::Left,
                 Key::Esc,
-                Key::Char('\n'),
             ],
             "Guaranteed",
         );
@@ -255,6 +255,27 @@ mod visual {
                 Key::Char('$'),
             ],
             "gatekeeper.sh/mutations: AssignMetadata//cluster-name-tag-datadog-agent:1, ModifySet//allow-scheduling-on-meta-node-pools:1",
+        );
+    }
+
+    #[test]
+    fn test_git_status_two_chars() {
+        test_key_seq(
+            TestFile::VisualGitStatus,
+            vec![
+                Key::Down,
+                Key::Down,
+                Key::Down,
+                Key::Char('v'),
+                Key::Char('v'),
+                Key::Right,
+                Key::Down,
+                Key::Down,
+                Key::Down,
+                Key::Down,
+                Key::Down,
+            ],
+            "co\nco\nco\nco\n  \not",
         );
     }
 }

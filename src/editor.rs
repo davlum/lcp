@@ -519,10 +519,10 @@ impl Editor {
     fn token_cursor(&mut self) {
         let Position { x, y } = self.cursor_position;
         let row = self.document.row(y);
-        if row.len > 0 {
-            let percent_row = x as f64 / row.len as f64;
-            let x = (percent_row * row.tokens.len() as f64).floor() as usize;
-            self.cursor_position = Position { x, y };
+        for (i, tok) in row.tokens.iter().enumerate() {
+            if tok.start <= x {
+                self.cursor_position = Position { x: i, y };
+            }
         }
     }
 
