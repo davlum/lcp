@@ -24,6 +24,9 @@ impl Tokenizer {
 #[derive(Debug)]
 pub struct Document {
     rows: Vec<Row>,
+    // In visual block mode, we consider the length of each row
+    // to be equivalent to the longest row.
+    longest_row: usize,
     tokenizer: Tokenizer,
 }
 
@@ -31,6 +34,11 @@ impl Document {
     pub(crate) fn tokenizer(&self) -> &Tokenizer {
         &self.tokenizer
     }
+
+    pub(crate) fn longest_row(&self) -> usize {
+        self.longest_row
+    }
+
     pub(crate) fn update_tokenizer(&mut self, tokenizer: Tokenizer) {
         for row in self.rows.iter_mut() {
             row.tokens = mk_tokens(&row.string, &tokenizer)
@@ -40,17 +48,18 @@ impl Document {
     pub(crate) fn new(input: impl BufRead) -> Result<Self, std::io::Error> {
         let tokenizer = Tokenizer::Whitespace;
         let mut rows = Vec::new();
-        let mut longest_line = 0;
+        let mut longest_row = 0;
 
         for value in input.lines() {
             let row = Row::new(value?.as_str().trim_end(), &tokenizer);
-            longest_line = std::cmp::max(longest_line, row.len);
+            longest_row = std::cmp::max(longest_row, row.len);
             rows.push(row);
         }
         for row in rows.iter_mut() {
-            row.whitespace_pad(longest_line);
+            row.whitespace_pad(longest_row);
         }
-        Ok(Self { rows, tokenizer })
+
+        Ok(Self { rows, tokenizer, longest_row })
     }
     pub(crate) fn row(&self, index: usize) -> &Row {
         self.rows
@@ -80,7 +89,7 @@ impl Document {
         if at.y >= self.rows.len() {
             return None;
         }
-        let mut position = Position { x: at.x, y: at.y };
+        let mut position = Position { x: at.x, y: at.y, longest_row: self.longest_row() };
 
         for _ in 0..self.len() {
             if let Some(row) = self.rows.get(position.y) {
