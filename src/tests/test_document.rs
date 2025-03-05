@@ -7,8 +7,20 @@ fn test_find_a() {
     let buf = BufReader::new(stringreader::StringReader::new(s));
     let doc = Document::new(buf).unwrap();
     assert_eq!(
-        doc.find("a", &Position { x: 0, y: 0, longest_row: doc.longest_row() }, SearchDirection::Forward),
-        Some(Position { x: 0, y: 0, longest_row: doc.longest_row() })
+        doc.find(
+            "a",
+            &Position {
+                x: 0,
+                y: 0,
+                longest_row: doc.longest_row()
+            },
+            SearchDirection::Forward
+        ),
+        Some(Position {
+            x: 0,
+            y: 0,
+            longest_row: doc.longest_row()
+        })
     );
 }
 
@@ -18,8 +30,20 @@ fn test_find_an() {
     let buf = BufReader::new(stringreader::StringReader::new(s));
     let doc = Document::new(buf).unwrap();
     assert_eq!(
-        doc.find("an", &Position { x: 0, y: 0, longest_row: doc.longest_row() }, SearchDirection::Forward),
-        Some(Position { x: 2, y: 3, longest_row: doc.longest_row() })
+        doc.find(
+            "an",
+            &Position {
+                x: 0,
+                y: 0,
+                longest_row: doc.longest_row()
+            },
+            SearchDirection::Forward
+        ),
+        Some(Position {
+            x: 2,
+            y: 3,
+            longest_row: doc.longest_row()
+        })
     );
 }
 
@@ -29,7 +53,19 @@ fn test_find_an_again() {
     let buf = BufReader::new(stringreader::StringReader::new(s));
     let doc = Document::new(buf).unwrap();
     assert_eq!(
-        doc.find("an", &Position { x: 3, y: 3, longest_row: doc.longest_row() }, SearchDirection::Forward),
-        Some(Position { x: 10, y: 13, longest_row: doc.longest_row })
+        doc.find(
+            "an",
+            &Position {
+                x: 3,
+                y: 3,
+                longest_row: doc.longest_row()
+            },
+            SearchDirection::Forward
+        ),
+        Some(Position {
+            x: 10,
+            y: 13,
+            longest_row: doc.longest_row
+        })
     );
 }
