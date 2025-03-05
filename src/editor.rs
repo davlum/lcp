@@ -38,6 +38,7 @@ pub enum VisualMode {
 pub struct Position {
     pub x: usize,
     pub y: usize,
+    pub longest_row: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -366,7 +367,7 @@ impl Editor {
         Ok(())
     }
     fn scroll(&mut self) {
-        let Position { x, y } = self.cursor_position;
+        let Position { x, y, .. } = self.cursor_position;
         let width = self.terminal.size().width as usize;
         let height = self.terminal.size().height as usize;
         if y < self.offset.y {
@@ -382,7 +383,7 @@ impl Editor {
     }
     fn move_cursor(&mut self, key: Key) {
         let terminal_height = self.terminal.size().height as usize;
-        let Position { mut y, mut x } = self.cursor_position;
+        let Position { mut y, mut x, .. } = self.cursor_position;
         let height = self.document.len() - 1;
         let row = self.document.row(y);
         let width = row.len(self.highlighted_text.mode);
@@ -446,7 +447,11 @@ impl Editor {
             x = width;
         }
 
-        self.cursor_position = Position { x, y };
+        self.cursor_position = Position {
+            x,
+            y,
+            longest_row: self.document.longest_row(),
+        };
 
         // If there are no tokens, move again.
         // We assume this happens only when moving the cursor up or down.
@@ -517,20 +522,28 @@ impl Editor {
     }
 
     fn token_cursor(&mut self) {
-        let Position { x, y } = self.cursor_position;
+        let Position { x, y, longest_row } = self.cursor_position;
         let row = self.document.row(y);
         for (i, tok) in row.tokens.iter().enumerate() {
             if tok.start <= x {
-                self.cursor_position = Position { x: i, y };
+                self.cursor_position = Position {
+                    x: i,
+                    y,
+                    longest_row,
+                };
             }
         }
     }
 
     fn normal_cursor(&mut self) {
-        let Position { x, y } = self.cursor_position;
+        let Position { x, y, longest_row } = self.cursor_position;
         let row = self.document.row(y);
         if let Some(tok) = row.token(x) {
-            self.cursor_position = Position { x: tok.start, y };
+            self.cursor_position = Position {
+                x: tok.start,
+                y,
+                longest_row,
+            };
         }
     }
 }

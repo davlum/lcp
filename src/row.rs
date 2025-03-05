@@ -1,6 +1,6 @@
 use crate::document::Tokenizer;
 use crate::highlighting::{HighlightedText, TextMode};
-use crate::{highlighting, SearchDirection};
+use crate::{highlighting, Position, SearchDirection};
 use std::cmp;
 use std::cmp::Ordering;
 use termion::color;
@@ -123,7 +123,8 @@ impl Row {
                 0 => usize::MAX,
                 n => n.saturating_sub(1),
             },
-            TextMode::Visual(_) | TextMode::Search(_) => self.len.saturating_sub(1),
+            TextMode::Visual(Position { longest_row, .. }) => longest_row,
+            TextMode::Search(_) => self.len.saturating_sub(1),
         }
     }
 

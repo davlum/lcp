@@ -4,6 +4,7 @@ use super::*;
 
 enum TestFile {
     GetPods,
+    GetNs,
     PodYaml,
     Csv,
     GitStatus,
@@ -14,6 +15,7 @@ impl TestFile {
     fn to_str(self) -> &'static str {
         match self {
             TestFile::GetPods => include_str!("files/k-get-po.txt"),
+            TestFile::GetNs => include_str!("files/k-ns.txt"),
             TestFile::PodYaml => include_str!("files/pod.yaml"),
             TestFile::Csv => include_str!("files/sample-vocabulary.csv"),
             TestFile::GitStatus => include_str!("files/git-status.txt"),
@@ -276,6 +278,27 @@ mod visual {
                 Key::Down,
             ],
             "co\nco\nco\nco\n  \not",
+        );
+    }
+
+    #[test]
+    fn test_ns_block_copy() {
+        test_key_seq(
+            TestFile::GetNs,
+            vec![
+                Key::Char('v'),
+                Key::Down,
+                Key::Down,
+                Key::Down,
+                Key::Char('v'),
+                Key::Down,
+                Key::Right,
+                Key::Right,
+                Key::Right,
+                Key::Right,
+                Key::Right,
+            ],
+            "foobar\nfoobar",
         );
     }
 }
