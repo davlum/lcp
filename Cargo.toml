@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-termion = "1"
+termion = "4"
 unicode-segmentation = "1"
 arboard = "3.2"
 

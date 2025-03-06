@@ -89,7 +89,7 @@ impl Terminal {
 
     pub(crate) fn cursor_position(&mut self, position: &Position) -> std::io::Result<()> {
         if let Some(tty) = self.tty.as_mut() {
-            let Position { mut x, mut y } = position;
+            let Position { mut x, mut y , ..} = position;
             x = x.saturating_add(1);
             y = y.saturating_add(1);
             let x = x as u16;
