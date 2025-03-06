@@ -1,10 +1,10 @@
 use std::io::BufRead;
 
-use crate::highlighting::{HighlightedText, TextMode};
-use crate::row::{mk_tokens, switch_start_end};
 use crate::Position;
 use crate::Row;
 use crate::SearchDirection;
+use crate::highlighting::{HighlightedText, TextMode};
+use crate::row::{mk_tokens, switch_start_end};
 
 #[derive(Clone, Debug)]
 pub enum Tokenizer {

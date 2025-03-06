@@ -2,13 +2,12 @@ use arboard::Clipboard;
 use termion::color;
 use termion::event::Key;
 
-use crate::document::Tokenizer;
-use crate::highlighting::HighlightedText;
 use crate::Document;
 use crate::Terminal;
+use crate::document::Tokenizer;
+use crate::highlighting::HighlightedText;
 
-const HELP_STRING: &str =
-    "HELP: esc = quit | ENTER = copy | / = find | t = change tokenizer | w = whitespace (default) | v = visual mode";
+const HELP_STRING: &str = "HELP: esc = quit | ENTER = copy | / = find | t = change tokenizer | w = whitespace (default) | v = visual mode";
 
 const TOKENIZER_STRING: &str = "Enter text to change the tokenizer (default is whitespace): ";
 

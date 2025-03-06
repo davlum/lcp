@@ -1,6 +1,6 @@
 use crate::document::Tokenizer;
 use crate::highlighting::{HighlightedText, TextMode};
-use crate::{highlighting, Position, SearchDirection};
+use crate::{Position, SearchDirection, highlighting};
 use std::cmp;
 use std::cmp::Ordering;
 use termion::color;
