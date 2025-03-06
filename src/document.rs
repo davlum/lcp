@@ -59,7 +59,11 @@ impl Document {
             row.whitespace_pad(longest_row);
         }
 
-        Ok(Self { rows, tokenizer, longest_row })
+        Ok(Self {
+            rows,
+            tokenizer,
+            longest_row: longest_row.saturating_sub(1),
+        })
     }
     pub(crate) fn row(&self, index: usize) -> &Row {
         self.rows
@@ -89,7 +93,11 @@ impl Document {
         if at.y >= self.rows.len() {
             return None;
         }
-        let mut position = Position { x: at.x, y: at.y, longest_row: self.longest_row() };
+        let mut position = Position {
+            x: at.x,
+            y: at.y,
+            longest_row: self.longest_row(),
+        };
 
         for _ in 0..self.len() {
             if let Some(row) = self.rows.get(position.y) {

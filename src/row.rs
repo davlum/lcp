@@ -123,7 +123,7 @@ impl Row {
                 0 => usize::MAX,
                 n => n.saturating_sub(1),
             },
-            TextMode::Visual(Position { longest_row, .. })  => longest_row,
+            TextMode::Visual(Position { longest_row, .. }) => longest_row,
             TextMode::Search(_) => self.len.saturating_sub(1),
         }
     }
